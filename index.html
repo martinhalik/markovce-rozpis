@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="sk">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generátor rozpisu - Pravoslávni Markovce</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Outfit:wght@400;600;700;800;900&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Generátor týždenného rozpisu</h1>
+            <p>Generátor liturgického rozpisu pre farnosť Markovce</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Left side - Controls -->
+            <div class="controls-panel">
+                <section class="control-section">
+                    <h2>Základné informácie</h2>
+                    <div class="form-group">
+                        <label>Týždeň:</label>
+                        <div class="week-nav">
+                            <button id="prevWeek" class="nav-btn">◀ Predošlý</button>
+                            <span id="weekDisplay">--. --. – --. --.</span>
+                            <button id="nextWeek" class="nav-btn">Nasledujúci ▶</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="iconUpload">Ikona:</label>
+                        <input type="file" id="iconUpload" accept="image/*">
+                        <small>Odporúčaný formát: štvorcový obrázok</small>
+                    </div>
+                </section>
+
+                <section class="control-section">
+                    <h2>Rýchle šablóny</h2>
+                    <div class="template-buttons">
+                        <button class="template-btn" onclick="loadStandardWeek()">📅 Štandardný týždeň</button>
+                        <button class="template-btn" onclick="clearAllEvents()">🗑️ Vymazať všetky udalosti</button>
+                    </div>
+                </section>
+
+                <section class="control-section">
+                    <h2>Odporúčané služby</h2>
+                    <div class="recommendations">
+                        <button class="rec-btn" data-event="6:00 sv. Liturgia">6:00 sv. Liturgia</button>
+                        <button class="rec-btn" data-event="7:00 sv. Liturgia">7:00 sv. Liturgia</button>
+                        <button class="rec-btn" data-event="8:00 sv. Liturgia">8:00 sv. Liturgia</button>
+                        <button class="rec-btn" data-event="9:00 sv. Liturgia">9:00 sv. Liturgia</button>
+                        <button class="rec-btn" data-event="13:00 Nedeľná škola">13:00 Nedeľná škola</button>
+                        <button class="rec-btn" data-event="14:00 Kačanov">14:00 Kačanov</button>
+                        <button class="rec-btn" data-event="16:00 Katechéza">16:00 Katechéza</button>
+                        <button class="rec-btn" data-event="16:00 Zemplínske Jastrabie">16:00 Zemplínske
+                            Jastrabie</button>
+                        <button class="rec-btn" data-event="17:00 Veľká večerňa">17:00 Veľká večerňa</button>
+                        <button class="rec-btn" data-event="17:00 Večerňa a spoveď">17:00 Večerňa a spoveď</button>
+                        <button class="rec-btn" data-event="19:00 Veľké Povečerie">19:00 Veľké Povečerie</button>
+                    </div>
+                </section>
+
+                <section class="control-section">
+                    <h2>Úprava udalostí</h2>
+                    <div id="dayEditor">
+                        <div class="day-selector">
+                            <button class="day-btn" data-day="monday">Pondelok</button>
+                            <button class="day-btn" data-day="tuesday">Utorok</button>
+                            <button class="day-btn" data-day="wednesday">Streda</button>
+                            <button class="day-btn" data-day="thursday">Štvrtok</button>
+                            <button class="day-btn" data-day="friday">Piatok</button>
+                            <button class="day-btn" data-day="saturday">Sobota</button>
+                            <button class="day-btn active" data-day="sunday">Nedeľa</button>
+                        </div>
+                        <div class="form-group">
+                            <label>Typ dňa:</label>
+                            <div class="day-type-selector">
+                                <label class="day-type-option">
+                                    <input type="radio" name="dayType" value="non-fasting" checked>
+                                    <span class="day-type-label yellow">Bežný deň</span>
+                                </label>
+                                <label class="day-type-option">
+                                    <input type="radio" name="dayType" value="fasting">
+                                    <span class="day-type-label purple">Pôstny deň</span>
+                                </label>
+                                <label class="day-type-option">
+                                    <input type="radio" name="dayType" value="celebration">
+                                    <span class="day-type-label red">Veľký sviatok</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Sviatok pre tento deň:</label>
+                            <input type="text" id="dayFeastName" placeholder="napr. Prep. Xénia">
+                        </div>
+                        <div id="eventsList" class="events-list"></div>
+                        <button class="add-event-btn" onclick="addEventToCurrentDay()">+ Pridať udalosť</button>
+                    </div>
+                </section>
+
+                <section class="control-section">
+                    <h2>Export</h2>
+                    <button class="export-btn" onclick="generateImage()">📥 Stiahnuť obrázok</button>
+                </section>
+            </div>
+
+            <!-- Right side - Preview -->
+            <div class="preview-panel">
+                <h2>Náhľad</h2>
+                <div class="preview-container">
+                    <canvas id="previewCanvas" width="400" height="400"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
