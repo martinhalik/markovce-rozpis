@@ -432,7 +432,7 @@ function drawSchedule(ctx, canvas, scale) {
     drawHeader(ctx, canvas, scale);
 
     const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-    const startY = 320 * scale; // Lowered to give space to header
+    const startY = 270 * scale; // Reduced from 320 to bring days closer to headline
     const dayPadding = 8 * scale; // Reduced padding between days for more compact layout
 
     let currentY = startY;
@@ -455,9 +455,9 @@ function drawHeader(ctx, canvas, scale) {
 
     const dateText = `${state.currentWeekStart.getDate()}. – ${end.getDate()}. ${monthNames[end.getMonth()]}`;
 
-    ctx.font = `900 ${120 * scale}px "Outfit", sans-serif`;
+    ctx.font = `900 ${90 * scale}px "Outfit", sans-serif`; // Reduced from 120
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(dateText, 70 * scale, 200 * scale);
+    ctx.fillText(dateText, 70 * scale, 190 * scale); // Adjusted baseline from 200 to 190
 }
 
 function drawDayRow(ctx, day, y, canvas, scale) {
