@@ -260,9 +260,9 @@ function loadFastingWeek() {
     state.events = {
         monday: [],
         tuesday: [],
-        wednesday: ['18:00 Liturgia vopred posv. darov'],
+        wednesday: ['16:30 Liturgia vopred posv. darov'],
         thursday: ['7:00 sv. Liturgia'],
-        friday: ['18:00 Liturgia vopred posv. darov'],
+        friday: ['16:30 Liturgia vopred posv. darov'],
         saturday: ['8:00 sv. Liturgia', '14:00 Kačanov', '17:00 Večerňa a spoveď'],
         sunday: ['9:00 sv. Liturgia', '13:00 Nedeľná škola']
     };
