@@ -29,7 +29,8 @@ const state = {
         friday: 'fasting',
         saturday: 'non-fasting',
         sunday: 'celebration'
-    }
+    },
+    fastingMode: false
 };
 
 // LocalStorage functions
@@ -41,6 +42,7 @@ function saveToLocalStorage() {
             events: state.events,
             feasts: state.feasts,
             dayTypes: state.dayTypes,
+            fastingMode: state.fastingMode,
             iconImageData: null
         };
 
@@ -74,6 +76,7 @@ function loadFromLocalStorage() {
         state.events = parsed.events || state.events;
         state.feasts = parsed.feasts || state.feasts;
         state.dayTypes = parsed.dayTypes || state.dayTypes;
+        state.fastingMode = parsed.fastingMode || false;
 
         // Restore week start date
         if (parsed.currentWeekStart) {
@@ -133,6 +136,9 @@ document.addEventListener('DOMContentLoaded', () => {
         loadStandardWeek();
     }
 
+    // Sync fasting mode checkbox with state
+    document.getElementById('fastingMode').checked = state.fastingMode;
+
     updateUI();
 });
 
@@ -176,6 +182,13 @@ function initializeEventListeners() {
             updatePreview();
             saveToLocalStorage();
         });
+    });
+
+    // Fasting mode toggle
+    document.getElementById('fastingMode').addEventListener('change', (e) => {
+        state.fastingMode = e.target.checked;
+        updatePreview();
+        saveToLocalStorage();
     });
 
     // Week navigation
@@ -238,6 +251,36 @@ function loadStandardWeek() {
         saturday: 'non-fasting',
         sunday: 'celebration'
     };
+    renderDayDetails();
+    updatePreview();
+    saveToLocalStorage();
+}
+
+function loadFastingWeek() {
+    state.events = {
+        monday: [],
+        tuesday: [],
+        wednesday: ['16:30 Liturgia vopred posv. darov'],
+        thursday: ['7:00 sv. Liturgia'],
+        friday: ['16:30 Liturgia vopred posv. darov'],
+        saturday: ['8:00 sv. Liturgia', '14:00 Kačanov', '17:00 Večerňa a spoveď'],
+        sunday: ['9:00 sv. Liturgia', '13:00 Nedeľná škola']
+    };
+    state.feasts = {
+        monday: '', tuesday: '', wednesday: '', thursday: '',
+        friday: '', saturday: '', sunday: ''
+    };
+    state.dayTypes = {
+        monday: 'fasting',
+        tuesday: 'fasting',
+        wednesday: 'fasting',
+        thursday: 'non-fasting',
+        friday: 'fasting',
+        saturday: 'non-fasting',
+        sunday: 'celebration'
+    };
+    state.fastingMode = true;
+    document.getElementById('fastingMode').checked = true;
     renderDayDetails();
     updatePreview();
     saveToLocalStorage();
@@ -370,14 +413,18 @@ function updatePreview() {
 }
 
 function drawBackground(ctx, canvas, scale) {
-    // Ochre/Gold background
     const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    gradient.addColorStop(0, '#c9b48b'); // Lighter ochre
-    gradient.addColorStop(1, '#a68a54'); // Darker ochre/gold
+    if (state.fastingMode) {
+        // Purple/Violet background for fasting/Lent
+        gradient.addColorStop(0, '#5b1a8a'); // Medium violet-purple
+        gradient.addColorStop(1, '#2d0a52'); // Dark purple
+    } else {
+        // Ochre/Gold background
+        gradient.addColorStop(0, '#c9b48b'); // Lighter ochre
+        gradient.addColorStop(1, '#a68a54'); // Darker ochre/gold
+    }
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Optional: add a subtle mesh/texture if we had one
 }
 
 function drawIcon(ctx, canvas, scale) {
@@ -418,11 +465,12 @@ function drawIcon(ctx, canvas, scale) {
     ctx.restore();
 
     // Better way: Draw an overlay gradient from left to right to blend
+    const bgRgb = state.fastingMode ? '45, 10, 82' : '166, 138, 84';
     const overlay = ctx.createLinearGradient(0, 0, canvas.width, 0);
-    overlay.addColorStop(0, 'rgba(166, 138, 84, 1)');
-    overlay.addColorStop(0.35, 'rgba(166, 138, 84, 1)');
-    overlay.addColorStop(0.6, 'rgba(166, 138, 84, 0.4)');
-    overlay.addColorStop(1, 'rgba(166, 138, 84, 0)');
+    overlay.addColorStop(0, `rgba(${bgRgb}, 1)`);
+    overlay.addColorStop(0.35, `rgba(${bgRgb}, 1)`);
+    overlay.addColorStop(0.6, `rgba(${bgRgb}, 0.4)`);
+    overlay.addColorStop(1, `rgba(${bgRgb}, 0)`);
 
     ctx.fillStyle = overlay;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
