@@ -474,6 +474,220 @@ body {
     cursor: pointer;
 }
 
+/* Icon Controls */
+.icon-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 5px;
+}
+
+.icon-upload-btn,
+.icon-gallery-btn {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.icon-upload-btn {
+    background: var(--dark-bg);
+    border: 2px solid var(--primary-blue);
+    color: var(--text-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.icon-upload-btn:hover {
+    background: var(--primary-blue);
+}
+
+.icon-gallery-btn {
+    background: var(--dark-bg);
+    border: 2px solid var(--purple);
+    color: var(--text-light);
+}
+
+.icon-gallery-btn:hover {
+    background: var(--purple);
+}
+
+/* Gallery Modal */
+.gallery-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.gallery-modal-content {
+    background: var(--card-bg);
+    border-radius: 20px;
+    width: 100%;
+    max-width: 760px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+}
+
+.gallery-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 2px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.gallery-modal-header h2 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--primary-blue);
+}
+
+.gallery-close-btn {
+    background: var(--dark-bg);
+    border: 2px solid var(--border-color);
+    color: var(--text-light);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gallery-close-btn:hover {
+    background: var(--primary-red);
+    border-color: var(--primary-red);
+}
+
+.gallery-modal-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.gallery-upload-area {
+    margin-bottom: 20px;
+}
+
+.gallery-add-btn {
+    display: inline-block;
+    padding: 12px 24px;
+    background: linear-gradient(135deg, var(--primary-blue) 0%, var(--purple) 100%);
+    border-radius: 10px;
+    color: white;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(65, 105, 225, 0.3);
+}
+
+.gallery-add-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(65, 105, 225, 0.5);
+}
+
+.gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 14px;
+}
+
+.gallery-empty {
+    color: var(--text-gray);
+    text-align: center;
+    padding: 40px 0;
+    font-size: 0.95rem;
+}
+
+.gallery-item {
+    position: relative;
+    background: var(--dark-bg);
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.gallery-item:hover {
+    border-color: var(--primary-blue);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(65, 105, 225, 0.3);
+}
+
+.gallery-item.selected {
+    border-color: var(--primary-green);
+    box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.3);
+}
+
+.gallery-item img {
+    width: 100%;
+    flex: 1;
+    object-fit: cover;
+    display: block;
+    min-height: 0;
+}
+
+.gallery-item-name {
+    padding: 5px 8px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-gray);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: var(--dark-bg);
+    flex-shrink: 0;
+}
+
+.gallery-item-delete {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: rgba(255, 71, 87, 0.85);
+    border: none;
+    color: white;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    font-size: 0.7rem;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.gallery-item:hover .gallery-item-delete {
+    display: flex;
+}
+
+.gallery-item-delete:hover {
+    background: var(--primary-red);
+    transform: scale(1.1);
+}
+
 /* Responsive */
 @media (max-width: 1400px) {
     .main-content {

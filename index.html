@@ -34,8 +34,12 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="iconUpload">Ikona:</label>
-                        <input type="file" id="iconUpload" accept="image/*">
+                        <label>Ikona:</label>
+                        <div class="icon-controls">
+                            <label for="iconUpload" class="icon-upload-btn">📁 Nahrať ikonu</label>
+                            <input type="file" id="iconUpload" accept="image/*" style="display:none">
+                            <button class="icon-gallery-btn" onclick="openGallery()">🖼️ Galéria ikon</button>
+                        </div>
                         <small>Odporúčaný formát: štvorcový obrázok</small>
                     </div>
                     <div class="form-group">
@@ -124,6 +128,23 @@
                 <div class="preview-container">
                     <canvas id="previewCanvas" width="400" height="400"></canvas>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Icon Gallery Modal -->
+    <div id="galleryModal" class="gallery-modal" style="display:none">
+        <div class="gallery-modal-content">
+            <div class="gallery-modal-header">
+                <h2>🖼️ Galéria ikon</h2>
+                <button class="gallery-close-btn" onclick="closeGallery()">✕</button>
+            </div>
+            <div class="gallery-modal-body">
+                <div class="gallery-upload-area">
+                    <label for="galleryUpload" class="gallery-add-btn">+ Pridať ikonu do galérie</label>
+                    <input type="file" id="galleryUpload" accept="image/*" style="display:none">
+                </div>
+                <div id="galleryGrid" class="gallery-grid"></div>
             </div>
         </div>
     </div>
