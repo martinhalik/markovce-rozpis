@@ -53,7 +53,6 @@
     { "id": "saint-rostislav", "name": "St. Rostislav", "file": "saint-rostislav.jpg" },
     { "id": "saint-wenceslas", "name": "St. Wenceslas", "file": "saint-wenceslas.jpg" },
     { "id": "saint-xenia", "name": "St. Xenia of Petersburg", "file": "saint-xenia-of-petersburg.png" },
-    { "id": "unknown-image-2", "name": "unknown_image-2", "file": "unknown_image-2.png" },
     { "id": "transfiguration", "name": "Transfiguration of the Lord", "file": "transfiguration-of-the-lord.jpg" },
     { "id": "saint-maxim-sandovic", "name": "St. Maxim Sandović", "file": "saint-maxim-sandovic.jpg" }
   ]
