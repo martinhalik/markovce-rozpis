@@ -2,6 +2,7 @@
 const state = {
     currentDay: 'sunday',
     iconImage: null,
+    currentGalleryId: null,
     currentWeekStart: null,
     events: {
         monday: [],
@@ -32,6 +33,106 @@ const state = {
     },
     fastingMode: false
 };
+
+// ── Gallery ────────────────────────────────────────────────────────────────
+let galleryImages = [];
+
+function loadGallery() {
+    try {
+        const saved = localStorage.getItem('markovce-icons-gallery');
+        if (saved) galleryImages = JSON.parse(saved);
+    } catch (e) {
+        galleryImages = [];
+    }
+    // Attempt to load built-in icons from manifest (static file in /icons/)
+    fetch('icons/manifest.json')
+        .then(r => r.json())
+        .then(manifest => {
+            const existingIds = new Set(galleryImages.map(i => i.id));
+            const builtins = (manifest.icons || [])
+                .filter(icon => !existingIds.has(icon.id))
+                .map(icon => ({ id: icon.id, name: icon.name, src: 'icons/' + icon.file, type: 'builtin' }));
+            if (builtins.length) {
+                galleryImages = [...builtins, ...galleryImages];
+            }
+        })
+        .catch(() => { /* no manifest – that's fine */ });
+}
+
+function saveGallery() {
+    try {
+        const toSave = galleryImages.filter(i => i.type === 'uploaded');
+        localStorage.setItem('markovce-icons-gallery', JSON.stringify(toSave));
+    } catch (e) {
+        console.error('Gallery save error:', e);
+    }
+}
+
+function addToGallery(src, suggestedName) {
+    const id = 'icon_' + Date.now();
+    const uploadCount = galleryImages.filter(i => i.type === 'uploaded').length + 1;
+    galleryImages.push({
+        id,
+        name: suggestedName || ('Ikona ' + uploadCount),
+        src,
+        type: 'uploaded',
+        addedAt: Date.now()
+    });
+    saveGallery();
+    return id;
+}
+
+function openGallery() {
+    renderGallery();
+    document.getElementById('galleryModal').style.display = 'flex';
+}
+
+function closeGallery() {
+    document.getElementById('galleryModal').style.display = 'none';
+}
+
+function renderGallery() {
+    const grid = document.getElementById('galleryGrid');
+    if (!galleryImages.length) {
+        grid.innerHTML = '<p class="gallery-empty">Galéria je prázdna. Nahrajte prvú ikonu pomocou tlačidla vyššie.</p>';
+        return;
+    }
+    grid.innerHTML = galleryImages.map(img => `
+        <div class="gallery-item${state.currentGalleryId === img.id ? ' selected' : ''}"
+             onclick="selectFromGallery('${img.id}')">
+            <img src="${img.src}" alt="${img.name}" loading="lazy">
+            <div class="gallery-item-name">${img.name}</div>
+            ${img.type === 'uploaded'
+                ? `<button class="gallery-item-delete" onclick="deleteFromGallery(event,'${img.id}')">✕</button>`
+                : ''}
+        </div>
+    `).join('');
+}
+
+function selectFromGallery(id) {
+    const item = galleryImages.find(i => i.id === id);
+    if (!item) return;
+    state.currentGalleryId = id;
+    const img = new Image();
+    img.onload = () => {
+        state.iconImage = img;
+        updatePreview();
+        saveToLocalStorage();
+    };
+    img.src = item.src;
+    closeGallery();
+}
+
+function deleteFromGallery(event, id) {
+    event.stopPropagation();
+    galleryImages = galleryImages.filter(i => i.id !== id);
+    if (state.currentGalleryId === id) {
+        state.currentGalleryId = null;
+    }
+    saveGallery();
+    renderGallery();
+}
+// ───────────────────────────────────────────────────────────────────────────
 
 // LocalStorage functions
 function saveToLocalStorage() {
@@ -117,6 +218,9 @@ const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Máj', 'Jún',
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    // Load gallery
+    loadGallery();
+
     // Try to load from localStorage first
     const loaded = loadFromLocalStorage();
 
@@ -165,8 +269,9 @@ function initializeEventListeners() {
         });
     });
 
-    // Icon upload
+    // Icon upload (main + gallery upload)
     document.getElementById('iconUpload').addEventListener('change', handleIconUpload);
+    document.getElementById('galleryUpload').addEventListener('change', handleGalleryUpload);
 
     // Feast input
     document.getElementById('dayFeastName').addEventListener('input', (e) => {
@@ -217,19 +322,35 @@ function updateUI() {
 
 function handleIconUpload(e) {
     const file = e.target.files[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const img = new Image();
-            img.onload = () => {
-                state.iconImage = img;
-                updatePreview();
-                saveToLocalStorage();
-            };
-            img.src = event.target.result;
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const src = event.target.result;
+        const id = addToGallery(src, file.name.replace(/\.[^.]+$/, ''));
+        state.currentGalleryId = id;
+        const img = new Image();
+        img.onload = () => {
+            state.iconImage = img;
+            updatePreview();
+            saveToLocalStorage();
         };
-        reader.readAsDataURL(file);
-    }
+        img.src = src;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+}
+
+function handleGalleryUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const src = event.target.result;
+        addToGallery(src, file.name.replace(/\.[^.]+$/, ''));
+        renderGallery();
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
 }
 
 function loadStandardWeek() {
