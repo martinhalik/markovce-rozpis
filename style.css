@@ -437,6 +437,43 @@ body {
     box-shadow: var(--shadow);
 }
 
+/* Fasting mode */
+.template-btn--fasting {
+    background: linear-gradient(135deg, #6200ea, #4a0090);
+    border-color: #9c4dcc;
+    color: white;
+}
+
+.template-btn--fasting:hover {
+    background: linear-gradient(135deg, #7c1ff7, #5a00b0);
+    border-color: #b269ff;
+}
+
+.rec-btn--fasting {
+    border-color: #9c4dcc;
+    background: rgba(98, 0, 234, 0.15);
+}
+
+.rec-btn--fasting:hover {
+    background: #6200ea;
+    box-shadow: 0 4px 15px rgba(98, 0, 234, 0.4);
+}
+
+.fasting-mode-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.95rem;
+}
+
+.fasting-mode-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #9c4dcc;
+    cursor: pointer;
+}
+
 /* Responsive */
 @media (max-width: 1400px) {
     .main-content {

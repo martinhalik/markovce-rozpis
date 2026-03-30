@@ -38,12 +38,19 @@
                         <input type="file" id="iconUpload" accept="image/*">
                         <small>Odporúčaný formát: štvorcový obrázok</small>
                     </div>
+                    <div class="form-group">
+                        <label class="fasting-mode-label">
+                            <input type="checkbox" id="fastingMode">
+                            Pôstne farby pozadia (fialová)
+                        </label>
+                    </div>
                 </section>
 
                 <section class="control-section">
                     <h2>Rýchle šablóny</h2>
                     <div class="template-buttons">
                         <button class="template-btn" onclick="loadStandardWeek()">📅 Štandardný týždeň</button>
+                        <button class="template-btn template-btn--fasting" onclick="loadFastingWeek()">☦ Pôstny týždeň</button>
                         <button class="template-btn" onclick="clearAllEvents()">🗑️ Vymazať všetky udalosti</button>
                     </div>
                 </section>
@@ -63,6 +70,7 @@
                         <button class="rec-btn" data-event="17:00 Veľká večerňa">17:00 Veľká večerňa</button>
                         <button class="rec-btn" data-event="17:00 Večerňa a spoveď">17:00 Večerňa a spoveď</button>
                         <button class="rec-btn" data-event="19:00 Veľké Povečerie">19:00 Veľké Povečerie</button>
+                        <button class="rec-btn rec-btn--fasting" data-event="18:00 Liturgia vopred posv. darov">18:00 Lit. vopred posv. darov</button>
                     </div>
                 </section>
 
