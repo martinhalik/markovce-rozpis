@@ -32,6 +32,15 @@
                             <span id="weekDisplay">--. --. – --. --.</span>
                             <button id="nextWeek" class="nav-btn">Nasledujúci ▶</button>
                         </div>
+                        <div class="week-save-row">
+                            <button class="stats-open-btn" onclick="openStats()">📊 Štatistiky</button>
+                        </div>
+                        <div id="weekLockBanner" class="week-lock-banner" style="display:none">
+                            <span class="week-lock-icon">🔒</span>
+                            <span class="week-lock-text">Tento týždeň už prešiel a je uzamknutý.</span>
+                            <button class="week-lock-unlock" onclick="unlockCurrentWeek()">Odomknúť na úpravu</button>
+                        </div>
+                        <small id="weekSavedHint">Zmeny sa ukladajú automaticky. Každý týždeň sa eviduje samostatne a zarátava do ročnej štatistiky liturgií. Týždne v minulosti sú automaticky uzamknuté.</small>
                     </div>
                     <div class="form-group">
                         <label>Ikona:</label>
@@ -132,6 +141,27 @@
         </div>
     </div>
 
+    <!-- Stats Modal -->
+    <div id="statsModal" class="gallery-modal" style="display:none">
+        <div class="gallery-modal-content stats-modal-content">
+            <div class="gallery-modal-header">
+                <h2>📊 Štatistiky liturgií</h2>
+                <button class="gallery-close-btn" onclick="closeStats()">✕</button>
+            </div>
+            <div class="gallery-modal-body">
+                <div class="stats-year-picker">
+                    <button class="year-nav-btn" onclick="changeStatsYear(-1)">◀</button>
+                    <div class="stats-year-display">
+                        <span class="stats-year-label">Rok</span>
+                        <span id="statsYearDisplay">----</span>
+                    </div>
+                    <button class="year-nav-btn" onclick="changeStatsYear(1)">▶</button>
+                </div>
+                <div id="statsContent"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Icon Gallery Modal -->
     <div id="galleryModal" class="gallery-modal" style="display:none">
         <div class="gallery-modal-content">
@@ -147,6 +177,12 @@
                 <div id="galleryGrid" class="gallery-grid"></div>
             </div>
         </div>
+    </div>
+
+    <!-- Auto-save toast -->
+    <div id="savedToast" class="saved-toast" role="status" aria-live="polite">
+        <span class="saved-toast-icon">✓</span>
+        <span class="saved-toast-text">Uložené</span>
     </div>
 
     <script src="script.js"></script>
