@@ -175,16 +175,21 @@ function renderGallery() {
         grid.innerHTML = '<p class="gallery-empty">Galéria je prázdna. Nahrajte prvú ikonu pomocou tlačidla vyššie.</p>';
         return;
     }
-    grid.innerHTML = galleryImages.map(img => `
-        <div class="gallery-item${state.currentGalleryId === img.id ? ' selected' : ''}"
-             onclick="selectFromGallery('${img.id}')">
-            <img src="${img.src}" alt="${img.name}" loading="lazy">
-            <div class="gallery-item-name">${img.name}</div>
-            ${img.type === 'uploaded'
-                ? `<button class="gallery-item-delete" onclick="deleteFromGallery(event,'${img.id}')">✕</button>`
-                : ''}
-        </div>
-    `).join('');
+    grid.innerHTML = galleryImages.map(img => {
+        const safeName = escapeHtml(img.name);
+        const safeId = escapeHtml(img.id);
+        const safeSrc = escapeHtml(img.src);
+        return `
+            <div class="gallery-item${state.currentGalleryId === img.id ? ' selected' : ''}"
+                 onclick="selectFromGallery('${safeId}')">
+                <img src="${safeSrc}" alt="${safeName}" loading="lazy">
+                <div class="gallery-item-name">${safeName}</div>
+                ${img.type === 'uploaded'
+                    ? `<button class="gallery-item-delete" onclick="deleteFromGallery(event,'${safeId}')">✕</button>`
+                    : ''}
+            </div>
+        `;
+    }).join('');
 }
 
 function selectFromGallery(id) {
@@ -194,6 +199,7 @@ function selectFromGallery(id) {
     const img = new Image();
     img.onload = () => {
         state.iconImage = img;
+        state._iconDataUrl = item.src; // cache so we don't re-encode on every save
         updatePreview();
         saveToLocalStorage();
     };
@@ -213,32 +219,38 @@ function deleteFromGallery(event, id) {
 // ───────────────────────────────────────────────────────────────────────────
 
 // LocalStorage functions
-function saveToLocalStorage() {
-    try {
-        // Make sure the current week's data is reflected in the archive before persisting
-        snapshotCurrentWeekToArchive();
+//
+// Persistence is debounced: rapid edits (feast name keystrokes, drag reorders)
+// coalesce into a single localStorage write. flushSaveToLocalStorage() runs the
+// actual work; saveToLocalStorage() schedules it.
+const SAVE_DEBOUNCE_MS = 200;
+let _saveTimer = null;
 
+function saveToLocalStorage() {
+    // Snapshot synchronously so in-memory archive is always current even if the
+    // flush is delayed (important for openStats() which reads state.archive).
+    snapshotCurrentWeekToArchive();
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(flushSaveToLocalStorage, SAVE_DEBOUNCE_MS);
+}
+
+function flushSaveToLocalStorage() {
+    _saveTimer = null;
+    try {
         const stateToSave = {
             currentDay: state.currentDay,
             currentWeekStart: state.currentWeekStart ? state.currentWeekStart.toISOString() : null,
+            currentGalleryId: state.currentGalleryId,
             // Keep legacy top-level fields for backward compatibility with older clients/exports
             events: state.events,
             feasts: state.feasts,
             dayTypes: state.dayTypes,
             fastingMode: state.fastingMode,
             archive: state.archive,
-            iconImageData: null
+            // Use the cached data URL instead of re-encoding the image every save.
+            // _iconDataUrl is set wherever state.iconImage is set.
+            iconImageData: state._iconDataUrl || null
         };
-
-        // Convert icon image to base64 if it exists
-        if (state.iconImage) {
-            const canvas = document.createElement('canvas');
-            canvas.width = state.iconImage.width;
-            canvas.height = state.iconImage.height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(state.iconImage, 0, 0);
-            stateToSave.iconImageData = canvas.toDataURL('image/png');
-        }
 
         localStorage.setItem('markovce-rozpis-state', JSON.stringify(stateToSave));
         showSavedToast();
@@ -287,9 +299,15 @@ function loadFromLocalStorage() {
             const img = new Image();
             img.onload = () => {
                 state.iconImage = img;
+                state._iconDataUrl = parsed.iconImageData;
                 updatePreview();
             };
             img.src = parsed.iconImageData;
+        }
+
+        // Restore selected-gallery highlight so the user sees which icon they picked
+        if (parsed.currentGalleryId) {
+            state.currentGalleryId = parsed.currentGalleryId;
         }
 
         return true;
@@ -345,6 +363,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     initializeEventListeners();
+    // One-time container-level drag handler (re-bound per item during each
+    // render; the container handler must not be re-added on every render).
+    initializeContainerDragListener();
+    initializeModalDismissHandlers();
+
+    // Flush any pending debounced save if the user closes/navigates away within
+    // the debounce window — prevents a just-typed keystroke from being lost.
+    window.addEventListener('pagehide', () => {
+        if (_saveTimer) flushSaveToLocalStorage();
+    });
 
     // Only load standard week if no saved events exist
     if (!loaded) {
@@ -481,6 +509,7 @@ function handleIconUpload(e) {
         const img = new Image();
         img.onload = () => {
             state.iconImage = img;
+            state._iconDataUrl = src; // cache so we don't re-encode on every save
             updatePreview();
             saveToLocalStorage();
         };
@@ -596,8 +625,13 @@ function renderDayDetails() {
     });
 
     // Update events list
+    if (locked && currentEvents.length === 0) {
+        eventsList.innerHTML = '<p class="events-empty-locked">Žiadne udalosti pre tento deň.</p>';
+        return;
+    }
+
     eventsList.innerHTML = currentEvents.map((event, index) => {
-        const safeValue = String(event).replace(/"/g, '&quot;');
+        const safeValue = escapeHtml(event);
         if (locked) {
             return `
                 <div class="event-item event-item--locked" data-index="${index}">
@@ -608,49 +642,75 @@ function renderDayDetails() {
         }
         return `
             <div class="event-item" draggable="true" data-index="${index}">
-                <span class="event-handle">☰</span>
-                <input type="text" value="${safeValue}" onchange="updateEvent(${index}, this.value)">
-                <button onclick="removeEvent(${index})">🗑️</button>
+                <span class="event-handle" aria-hidden="true">☰</span>
+                <input type="text" value="${safeValue}" onchange="updateEvent(${index}, this.value)" aria-label="Udalosť ${index + 1}">
+                <button onclick="removeEvent(${index})" aria-label="Zmazať udalosť ${index + 1}">🗑️</button>
             </div>
         `;
     }).join('');
 
-    // Show empty-state hint when locked and no events
-    if (locked && currentEvents.length === 0) {
-        eventsList.innerHTML = '<p class="events-empty-locked">Žiadne udalosti pre tento deň.</p>';
-    }
-
-    if (!locked) initializeDragAndDrop();
+    if (!locked) bindItemDragHandlers();
 }
 
-function initializeDragAndDrop() {
+// Per-item handlers (dragstart/dragend) are bound to freshly-created DOM nodes
+// each render — safe because the nodes themselves are replaced. The container's
+// `dragover` listener, however, is bound ONCE at init (see
+// initializeContainerDragListener) because the <div id="eventsList"> persists
+// across renders and would otherwise accumulate handlers on every re-render.
+function bindItemDragHandlers() {
     const list = document.getElementById('eventsList');
-    const items = list.querySelectorAll('.event-item');
-
-    items.forEach(item => {
-        item.addEventListener('dragstart', () => {
-            item.classList.add('dragging');
-        });
-
+    list.querySelectorAll('.event-item').forEach(item => {
+        item.addEventListener('dragstart', () => item.classList.add('dragging'));
         item.addEventListener('dragend', () => {
             item.classList.remove('dragging');
-            const newOrder = Array.from(list.querySelectorAll('.event-item')).map(item => {
-                return item.querySelector('input').value;
-            });
+            const newOrder = Array.from(list.querySelectorAll('.event-item'))
+                .map(el => el.querySelector('input').value);
             state.events[state.currentDay] = newOrder;
             updatePreview();
             saveToLocalStorage();
         });
     });
+}
 
+function initializeContainerDragListener() {
+    const list = document.getElementById('eventsList');
+    if (!list) return;
     list.addEventListener('dragover', e => {
         e.preventDefault();
         const afterElement = getDragAfterElement(list, e.clientY);
         const dragging = document.querySelector('.dragging');
-        if (afterElement == null) {
-            list.appendChild(dragging);
-        } else {
-            list.insertBefore(dragging, afterElement);
+        if (!dragging) return;
+        if (afterElement == null) list.appendChild(dragging);
+        else list.insertBefore(dragging, afterElement);
+    });
+}
+
+// ── Modal dismiss: Esc key + backdrop click ────────────────────────────────
+function initializeModalDismissHandlers() {
+    const modals = [
+        { id: 'galleryModal', close: closeGallery },
+        { id: 'statsModal',   close: closeStats }
+    ];
+
+    // Backdrop click (click lands on the modal backdrop itself, not the inner content card)
+    modals.forEach(({ id, close }) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('click', (e) => {
+            if (e.target === el) close();
+        });
+    });
+
+    // Esc closes the topmost open modal
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        for (const { id, close } of modals) {
+            const el = document.getElementById(id);
+            if (el && el.style.display !== 'none' && getComputedStyle(el).display !== 'none') {
+                close();
+                e.stopPropagation();
+                return;
+            }
         }
     });
 }
@@ -1325,30 +1385,32 @@ function renderStats() {
         </div>
         <div class="stats-section">
             <h3>Liturgie po mesiacoch</h3>
-            <table class="stats-month-table">
-                <thead>
-                    <tr>
-                        <th>Mesiac</th>
-                        <th>Spolu</th>
-                        <th>Sv. lit.</th>
-                        <th>Vopred</th>
-                        <th>Kač.</th>
-                        <th>Jastr.</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${stats.byMonth.map((m, i) => `
-                        <tr class="${m.total === 0 ? 'empty' : ''}">
-                            <td>${FULL_MONTH_NAMES[i]}</td>
-                            <td><strong>${m.total}</strong></td>
-                            <td>${m.regular}</td>
-                            <td>${m.presanctified}</td>
-                            <td>${m.kacanov}</td>
-                            <td>${m.jastrabie}</td>
+            <div class="stats-month-table-wrap">
+                <table class="stats-month-table">
+                    <thead>
+                        <tr>
+                            <th>Mesiac</th>
+                            <th>Spolu</th>
+                            <th>Sv. lit.</th>
+                            <th>Vopred</th>
+                            <th>Kač.</th>
+                            <th>Jastr.</th>
                         </tr>
-                    `).join('')}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        ${stats.byMonth.map((m, i) => `
+                            <tr class="${m.total === 0 ? 'empty' : ''}">
+                                <td>${FULL_MONTH_NAMES[i]}</td>
+                                <td><strong>${m.total}</strong></td>
+                                <td>${m.regular}</td>
+                                <td>${m.presanctified}</td>
+                                <td>${m.kacanov}</td>
+                                <td>${m.jastrabie}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
         </div>
         <div class="stats-section">
             <h3>Archivované týždne (${stats.weeks.length})</h3>

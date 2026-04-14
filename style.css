@@ -1063,13 +1063,20 @@ body.week-locked .fasting-mode-label {
     margin-bottom: 10px;
 }
 
+.stats-month-table-wrap {
+    /* Horizontal scroll on very narrow screens keeps the table legible rather
+       than letting Slovak month names compress into unreadable columns. */
+    overflow-x: auto;
+    border-radius: 10px;
+    background: var(--dark-bg);
+    -webkit-overflow-scrolling: touch;
+}
+
 .stats-month-table {
     width: 100%;
+    min-width: 420px;
     border-collapse: collapse;
     font-size: 0.9rem;
-    background: var(--dark-bg);
-    border-radius: 10px;
-    overflow: hidden;
 }
 
 .stats-month-table th,
