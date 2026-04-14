@@ -33,7 +33,6 @@
                             <button id="nextWeek" class="nav-btn">Nasledujúci ▶</button>
                         </div>
                         <div class="week-save-row">
-                            <button id="saveWeekBtn" class="save-week-btn" onclick="toggleCurrentWeekSaved()">💾 Uložiť týždeň</button>
                             <button class="stats-open-btn" onclick="openStats()">📊 Štatistiky</button>
                         </div>
                         <div id="weekLockBanner" class="week-lock-banner" style="display:none">
@@ -41,7 +40,7 @@
                             <span class="week-lock-text">Tento týždeň už prešiel a je uzamknutý.</span>
                             <button class="week-lock-unlock" onclick="unlockCurrentWeek()">Odomknúť na úpravu</button>
                         </div>
-                        <small id="weekSavedHint">Uložené týždne sa zarátavajú do ročnej štatistiky liturgií. Týždne v minulosti sú automaticky uzamknuté.</small>
+                        <small id="weekSavedHint">Zmeny sa ukladajú automaticky. Každý týždeň sa eviduje samostatne a zarátava do ročnej štatistiky liturgií. Týždne v minulosti sú automaticky uzamknuté.</small>
                     </div>
                     <div class="form-group">
                         <label>Ikona:</label>
@@ -158,10 +157,6 @@
                     </div>
                     <button class="year-nav-btn" onclick="changeStatsYear(1)">▶</button>
                 </div>
-                <label class="stats-filter-label">
-                    <input type="checkbox" id="statsSavedOnly" onchange="renderStats()">
-                    Počítať iba uložené týždne
-                </label>
                 <div id="statsContent"></div>
             </div>
         </div>
@@ -182,6 +177,12 @@
                 <div id="galleryGrid" class="gallery-grid"></div>
             </div>
         </div>
+    </div>
+
+    <!-- Auto-save toast -->
+    <div id="savedToast" class="saved-toast" role="status" aria-live="polite">
+        <span class="saved-toast-icon">✓</span>
+        <span class="saved-toast-text">Uložené</span>
     </div>
 
     <script src="script.js"></script>

@@ -688,56 +688,74 @@ body {
     transform: scale(1.1);
 }
 
-/* ── Week save / stats controls ─────────────────────────────────────────── */
+/* ── Stats button row ───────────────────────────────────────────────────── */
 .week-save-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
     gap: 10px;
     margin-top: 10px;
 }
 
-.save-week-btn,
 .stats-open-btn {
+    flex: 1;
     padding: 10px 14px;
     border-radius: 10px;
     font-size: 0.9rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
-    border: 2px solid transparent;
+    border: 2px solid var(--purple);
     background: var(--dark-bg);
     color: var(--text-light);
-}
-
-.save-week-btn {
-    border-color: var(--primary-green);
-}
-
-.save-week-btn:hover {
-    background: var(--primary-green);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 15px rgba(46, 204, 113, 0.35);
-}
-
-.save-week-btn.saved {
-    background: linear-gradient(135deg, var(--primary-green) 0%, #27ae60 100%);
-    border-color: #27ae60;
-    color: white;
-    box-shadow: 0 4px 15px rgba(46, 204, 113, 0.35);
-}
-
-.save-week-btn.saved:hover {
-    filter: brightness(0.95);
-}
-
-.stats-open-btn {
-    border-color: var(--purple);
 }
 
 .stats-open-btn:hover {
     background: var(--purple);
     transform: translateY(-1px);
     box-shadow: 0 4px 15px rgba(155, 89, 182, 0.4);
+}
+
+/* ── Auto-save toast ────────────────────────────────────────────────────── */
+.saved-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: linear-gradient(135deg, var(--primary-green) 0%, #27ae60 100%);
+    color: white;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    box-shadow: 0 8px 24px rgba(46, 204, 113, 0.35);
+    opacity: 0;
+    transform: translateY(12px);
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 2000;
+}
+
+.saved-toast.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.saved-toast-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.22);
+    font-size: 0.8rem;
+    font-weight: 800;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .saved-toast { transition: opacity 0.15s ease; transform: none; }
+    .saved-toast.visible { transform: none; }
 }
 
 /* ── Past-week lock banner ──────────────────────────────────────────────── */
@@ -871,29 +889,8 @@ body.week-locked .fasting-mode-label {
     font-family: 'Outfit', sans-serif;
 }
 
-.stats-filter-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    background: var(--dark-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    font-size: 0.85rem;
-    color: var(--text-gray);
-    cursor: pointer;
-    margin-bottom: 20px;
-    user-select: none;
-}
-
-.stats-filter-label input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    accent-color: var(--primary-blue);
-    cursor: pointer;
-}
-
 .stats-summary {
+    margin-top: 20px;
     display: grid;
     grid-template-columns: 220px 1fr;
     gap: 20px;
@@ -1027,7 +1024,7 @@ body.week-locked .fasting-mode-label {
 
 .stats-week-item {
     display: grid;
-    grid-template-columns: 28px 1fr auto auto;
+    grid-template-columns: 1fr auto auto;
     gap: 10px;
     align-items: center;
     padding: 8px 12px;
@@ -1035,29 +1032,6 @@ body.week-locked .fasting-mode-label {
     border: 1px solid var(--border-color);
     border-radius: 8px;
     font-size: 0.88rem;
-}
-
-.stats-week-item.saved {
-    border-color: var(--primary-green);
-    background: rgba(46, 204, 113, 0.08);
-}
-
-.stats-week-badge {
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    background: var(--card-bg);
-    color: var(--text-gray);
-    font-weight: 700;
-    font-size: 0.85rem;
-}
-
-.stats-week-item.saved .stats-week-badge {
-    background: var(--primary-green);
-    color: white;
 }
 
 .stats-week-date {
@@ -1126,7 +1100,7 @@ body.week-locked .fasting-mode-label {
     }
 
     .week-save-row {
-        grid-template-columns: 1fr;
+        flex-direction: column;
     }
 
     .stats-summary {
@@ -1134,11 +1108,11 @@ body.week-locked .fasting-mode-label {
     }
 
     .stats-week-item {
-        grid-template-columns: 24px 1fr auto;
+        grid-template-columns: 1fr auto;
     }
 
     .stats-week-item .stats-week-count {
-        grid-column: 2 / 3;
+        grid-column: 1 / 2;
         grid-row: 2;
         font-size: 0.78rem;
     }

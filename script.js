@@ -32,8 +32,9 @@ const state = {
         sunday: 'celebration'
     },
     fastingMode: false,
-    // Per-week archive: { "YYYY-MM-DD": { events, feasts, dayTypes, fastingMode, saved, savedAt, updatedAt } }
-    // keyed by the Monday (week start) date of that week
+    // Per-week archive: { "YYYY-MM-DD": { events, feasts, dayTypes, fastingMode, updatedAt } }
+    // keyed by the Monday (week start) date of that week. Every edit auto-saves
+    // an entry under the current week's key — every archived week counts in stats.
     archive: {}
 };
 
@@ -62,14 +63,11 @@ function currentWeekKey() {
 function snapshotCurrentWeekToArchive() {
     if (!state.currentWeekStart) return;
     const key = currentWeekKey();
-    const existing = state.archive[key] || {};
     state.archive[key] = {
         events: JSON.parse(JSON.stringify(state.events)),
         feasts: { ...state.feasts },
         dayTypes: { ...state.dayTypes },
         fastingMode: state.fastingMode,
-        saved: existing.saved || false,
-        savedAt: existing.savedAt || null,
         updatedAt: Date.now()
     };
 }
@@ -91,31 +89,22 @@ function loadWeekFromArchive(weekKey) {
     return true;
 }
 
-function isCurrentWeekSaved() {
-    const entry = state.archive[currentWeekKey()];
-    return entry ? !!entry.saved : false;
-}
+// ── Auto-save toast ────────────────────────────────────────────────────────
+// Shown briefly after every persisted edit so the user has visual confirmation
+// that the current week's program is safe. Suppressed during bootstrap so the
+// user doesn't see a phantom "Uložené" when the page first loads.
+let _appReady = false;
 
-function toggleCurrentWeekSaved() {
-    snapshotCurrentWeekToArchive();
-    const key = currentWeekKey();
-    const entry = state.archive[key];
-    entry.saved = !entry.saved;
-    entry.savedAt = entry.saved ? Date.now() : null;
-    saveToLocalStorage();
-    updateSavedIndicator();
-}
-
-function updateSavedIndicator() {
-    const btn = document.getElementById('saveWeekBtn');
-    if (!btn) return;
-    if (isCurrentWeekSaved()) {
-        btn.classList.add('saved');
-        btn.textContent = '✓ Uložené — kliknúť pre zrušenie';
-    } else {
-        btn.classList.remove('saved');
-        btn.textContent = '💾 Uložiť týždeň';
-    }
+function showSavedToast() {
+    if (!_appReady) return;
+    const toast = document.getElementById('savedToast');
+    if (!toast) return;
+    toast.classList.add('visible');
+    if (toast._hideTimer) clearTimeout(toast._hideTimer);
+    toast._hideTimer = setTimeout(() => {
+        toast.classList.remove('visible');
+        toast._hideTimer = null;
+    }, 1500);
 }
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -248,6 +237,7 @@ function saveToLocalStorage() {
         }
 
         localStorage.setItem('markovce-rozpis-state', JSON.stringify(stateToSave));
+        showSavedToast();
     } catch (error) {
         console.error('Error saving to localStorage:', error);
     }
@@ -364,8 +354,11 @@ document.addEventListener('DOMContentLoaded', () => {
     snapshotCurrentWeekToArchive();
 
     updateUI();
-    updateSavedIndicator();
     applyLockState();
+
+    // From this point onward, persisted edits trigger the "Uložené" toast.
+    // (Suppressed during bootstrap so initial state restore doesn't flash it.)
+    _appReady = true;
 });
 
 function initializeEventListeners() {
@@ -454,7 +447,6 @@ function navigateWeeks(deltaWeeks) {
     updateUI();
     renderDayDetails();
     document.getElementById('fastingMode').checked = state.fastingMode;
-    updateSavedIndicator();
     applyLockState();
     saveToLocalStorage();
 }
@@ -1073,21 +1065,18 @@ function categorizeEvent(eventText) {
     return null;
 }
 
-function computeStats(year, savedOnly) {
+function computeStats(year) {
     const stats = {
         year,
         totalLiturgies: 0,
         byCategory: { regular: 0, presanctified: 0, kacanov: 0, jastrabie: 0 },
         byMonth: Array.from({ length: 12 }, () => ({ total: 0, regular: 0, presanctified: 0, kacanov: 0, jastrabie: 0 })),
         weeks: [],
-        archivedWeeksTotal: 0,
-        savedWeeksTotal: 0
+        archivedWeeksTotal: 0
     };
 
     Object.keys(state.archive).sort().forEach(weekKey => {
         const entry = state.archive[weekKey];
-        if (savedOnly && !entry.saved) return;
-
         const weekStart = parseWeekKey(weekKey);
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekStart.getDate() + 6);
@@ -1097,7 +1086,6 @@ function computeStats(year, savedOnly) {
         if (!touchesYear) return;
 
         stats.archivedWeeksTotal++;
-        if (entry.saved) stats.savedWeeksTotal++;
 
         let weekCount = 0;
         DAY_KEYS.forEach((dayKey, idx) => {
@@ -1122,7 +1110,6 @@ function computeStats(year, savedOnly) {
             weekKey,
             weekStart,
             weekEnd,
-            saved: !!entry.saved,
             count: weekCount
         });
     });
@@ -1164,36 +1151,32 @@ function jumpToWeek(weekKey) {
     updateUI();
     renderDayDetails();
     document.getElementById('fastingMode').checked = state.fastingMode;
-    updateSavedIndicator();
     applyLockState();
     closeStats();
 }
 
 function renderStats() {
-    const savedOnlyEl = document.getElementById('statsSavedOnly');
-    const savedOnly = savedOnlyEl ? savedOnlyEl.checked : false;
-    const stats = computeStats(statsYear, savedOnly);
+    const stats = computeStats(statsYear);
 
     document.getElementById('statsYearDisplay').textContent = statsYear;
 
     const content = document.getElementById('statsContent');
     const weeksList = stats.weeks.length
         ? stats.weeks.map(w => `
-            <div class="stats-week-item${w.saved ? ' saved' : ''}">
-                <span class="stats-week-badge" title="${w.saved ? 'Uložený týždeň' : 'Neuložený (rozpracovaný) týždeň'}">${w.saved ? '✓' : '○'}</span>
+            <div class="stats-week-item">
                 <span class="stats-week-date">${formatWeekRange(w.weekStart, w.weekEnd)}</span>
                 <span class="stats-week-count">${w.count} lit.</span>
                 <button class="stats-week-jump" onclick="jumpToWeek('${w.weekKey}')">Otvoriť</button>
             </div>
         `).join('')
-        : `<p class="stats-empty">Žiadne archivované týždne pre rok ${statsYear}${savedOnly ? ' (s filtrom iba uložené)' : ''}.</p>`;
+        : `<p class="stats-empty">Žiadne archivované týždne pre rok ${statsYear}.</p>`;
 
     content.innerHTML = `
         <div class="stats-summary">
             <div class="stats-total">
                 <div class="stats-total-number">${stats.totalLiturgies}</div>
                 <div class="stats-total-label">liturgií v roku ${statsYear}</div>
-                <div class="stats-total-sub">${stats.savedWeeksTotal} uložených / ${stats.archivedWeeksTotal} archivovaných týždňov</div>
+                <div class="stats-total-sub">${stats.archivedWeeksTotal} archivovaných týždňov</div>
             </div>
             <div class="stats-breakdown">
                 <div class="stats-line"><span>Sv. Liturgia (Markovce)</span><strong>${stats.byCategory.regular}</strong></div>
