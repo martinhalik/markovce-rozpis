@@ -40,6 +40,10 @@ const state = {
 
 // Stats modal state (view-only, not persisted)
 let statsYear = new Date().getFullYear();
+// Which category groups are currently expanded in the stats modal. Liturgies
+// opens by default; other groups start collapsed. Persists across re-renders
+// (year changes) within the same session.
+const expandedStatsGroups = new Set(['liturgies']);
 
 // ── Week archive helpers ───────────────────────────────────────────────────
 function getWeekKey(date) {
@@ -1050,29 +1054,97 @@ const DAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'satur
 const FULL_MONTH_NAMES = ['Január', 'Február', 'Marec', 'Apríl', 'Máj', 'Jún',
     'Júl', 'August', 'September', 'Október', 'November', 'December'];
 
+// Category groups — the order here is also the display order in the stats modal.
+const CATEGORY_GROUPS = [
+    { key: 'liturgies',  label: 'Liturgie' },
+    { key: 'vespers',    label: 'Večerné bohoslužby' },
+    { key: 'sacraments', label: 'Sväté tajiny a obrady' },
+    { key: 'education',  label: 'Katechéza a modlitby' },
+    { key: 'other',      label: 'Iné', isFallback: true }
+];
+
+// Individual categories — **order matters**: first match wins, so more specific
+// patterns (e.g. "Liturgia vopred posv. darov", "Veľká večerňa") must come
+// before broader ones (plain "Liturgia", plain "Večerňa").
+const CATEGORIES = [
+    // --- Liturgie ---
+    { key: 'presanctified', group: 'liturgies', label: 'Liturgia vopred posv. darov',
+      test: t => /vopred/.test(t) && /liturgia|\blit\./.test(t) },
+    { key: 'kacanov',       group: 'liturgies', label: 'Kačanov',
+      test: t => /kačanov/.test(t) },
+    { key: 'jastrabie',     group: 'liturgies', label: 'Zemplínske Jastrabie',
+      test: t => /jastrabie/.test(t) },
+    { key: 'regular',       group: 'liturgies', label: 'Sv. Liturgia (Markovce)',
+      test: t => /liturgia|\blit\./.test(t) },
+
+    // --- Večerné bohoslužby --- (must precede "spoveď" so "Večerňa a spoveď" counts here)
+    { key: 'great_vespers', group: 'vespers', label: 'Veľká večerňa',
+      test: t => /(veľká|velka)\s+(večerň|vecern)/.test(t) },
+    { key: 'povecerie',     group: 'vespers', label: 'Povečerie',
+      test: t => /povečer|povecer/.test(t) },
+    { key: 'vespers',       group: 'vespers', label: 'Večerňa',
+      test: t => /večerň|vecern/.test(t) },
+    { key: 'utiereň',       group: 'vespers', label: 'Utiereň',
+      test: t => /utiereň|utieren|utreň|utren/.test(t) },
+
+    // --- Sväté tajiny a obrady ---
+    { key: 'baptism',     group: 'sacraments', label: 'Krst',
+      test: t => /\bkrst/.test(t) },
+    { key: 'wedding',     group: 'sacraments', label: 'Sobáš / Svadba',
+      test: t => /sobáš|sobas|svadba/.test(t) },
+    { key: 'funeral',     group: 'sacraments', label: 'Pohreb',
+      test: t => /pohreb/.test(t) },
+    { key: 'panychida',   group: 'sacraments', label: 'Panychida / Parastas',
+      test: t => /panych|panachid|parastas/.test(t) },
+    { key: 'myrovanie',   group: 'sacraments', label: 'Myrovanie / Pomazanie',
+      test: t => /myrovan|pomazan/.test(t) },
+    { key: 'confession',  group: 'sacraments', label: 'Spoveď',
+      test: t => /spoveď|spoved/.test(t) },
+
+    // --- Katechéza a modlitby ---
+    { key: 'sunday_school', group: 'education', label: 'Nedeľná škola',
+      test: t => /nedeľná\s+škola|nedelna\s+skola|nedeľ.*škol/.test(t) },
+    { key: 'catechism',     group: 'education', label: 'Katechéza',
+      test: t => /katech/.test(t) },
+    { key: 'moleben',       group: 'education', label: 'Moleben / Akafist',
+      test: t => /moleben|akafist/.test(t) }
+];
+
+// Keep a quick lookup of which sub-keys belong to the "Liturgie" group —
+// used to keep the hero number and month table liturgy-focused.
+const LITURGY_KEYS = new Set(
+    CATEGORIES.filter(c => c.group === 'liturgies').map(c => c.key)
+);
+
 function categorizeEvent(eventText) {
     if (!eventText) return null;
     const t = eventText.toLowerCase();
-    // Presanctified liturgy (Lent)
-    if (/vopred\s*posv/.test(t) || /vopred\s*prepodobn/.test(t) || /\bvopred\b/.test(t)) {
-        if (/liturgia|lit\./.test(t)) return 'presanctified';
+    for (const cat of CATEGORIES) {
+        if (cat.test(t)) return cat;
     }
-    // Filial parishes — these events are de-facto liturgies even when the word "liturgia" is omitted
-    if (/kačanov/.test(t)) return 'kacanov';
-    if (/jastrabie/.test(t)) return 'jastrabie';
-    // Regular Divine Liturgy at home parish
-    if (/liturgia|\blit\./.test(t)) return 'regular';
     return null;
 }
 
 function computeStats(year) {
+    // Initialise a zeroed group/sub structure so the UI layout stays stable
+    // even for years with no data yet.
+    const groups = {};
+    CATEGORY_GROUPS.forEach(g => {
+        groups[g.key] = { label: g.label, total: 0, subs: {}, isFallback: !!g.isFallback };
+    });
+    CATEGORIES.forEach(c => {
+        groups[c.group].subs[c.key] = { label: c.label, count: 0 };
+    });
+
     const stats = {
         year,
-        totalLiturgies: 0,
-        byCategory: { regular: 0, presanctified: 0, kacanov: 0, jastrabie: 0 },
+        totalLiturgies: 0,                // hero number — Liturgie group only
+        totalEvents: 0,                    // everything categorized + uncategorized (non-empty)
+        byCategory: { regular: 0, presanctified: 0, kacanov: 0, jastrabie: 0 },  // kept for month table
         byMonth: Array.from({ length: 12 }, () => ({ total: 0, regular: 0, presanctified: 0, kacanov: 0, jastrabie: 0 })),
         weeks: [],
-        archivedWeeksTotal: 0
+        archivedWeeksTotal: 0,
+        groups
     };
 
     Object.keys(state.archive).sort().forEach(weekKey => {
@@ -1087,7 +1159,7 @@ function computeStats(year) {
 
         stats.archivedWeeksTotal++;
 
-        let weekCount = 0;
+        let weekLiturgyCount = 0;
         DAY_KEYS.forEach((dayKey, idx) => {
             const dayDate = new Date(weekStart);
             dayDate.setDate(weekStart.getDate() + idx);
@@ -1096,13 +1168,30 @@ function computeStats(year) {
             const dayEvents = (entry.events && entry.events[dayKey]) || [];
             const month = dayDate.getMonth();
             dayEvents.forEach(ev => {
+                if (!ev || !String(ev).trim()) return;
+                stats.totalEvents++;
                 const cat = categorizeEvent(ev);
-                if (!cat) return;
-                stats.totalLiturgies++;
-                stats.byCategory[cat]++;
-                stats.byMonth[month].total++;
-                stats.byMonth[month][cat]++;
-                weekCount++;
+                if (cat) {
+                    const g = stats.groups[cat.group];
+                    g.total++;
+                    g.subs[cat.key].count++;
+                    if (LITURGY_KEYS.has(cat.key)) {
+                        stats.totalLiturgies++;
+                        stats.byCategory[cat.key]++;
+                        stats.byMonth[month].total++;
+                        stats.byMonth[month][cat.key]++;
+                        weekLiturgyCount++;
+                    }
+                } else {
+                    // Uncategorized → "Iné" bucket, aggregated by the event text so
+                    // the user can see what keywords are still missing from the rules.
+                    const g = stats.groups.other;
+                    const text = String(ev).trim();
+                    const key = text.toLowerCase();
+                    g.total++;
+                    g.subs[key] = g.subs[key] || { label: text, count: 0 };
+                    g.subs[key].count++;
+                }
             });
         });
 
@@ -1110,7 +1199,7 @@ function computeStats(year) {
             weekKey,
             weekStart,
             weekEnd,
-            count: weekCount
+            count: weekLiturgyCount
         });
     });
 
@@ -1155,12 +1244,65 @@ function jumpToWeek(weekKey) {
     closeStats();
 }
 
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function renderStats() {
     const stats = computeStats(statsYear);
 
     document.getElementById('statsYearDisplay').textContent = statsYear;
 
-    const content = document.getElementById('statsContent');
+    // --- Group accordion (one <details> per group) ---
+    const groupsHtml = CATEGORY_GROUPS.map(gMeta => {
+        const g = stats.groups[gMeta.key];
+        const open = expandedStatsGroups.has(gMeta.key);
+        let bodyHtml;
+        if (gMeta.isFallback) {
+            // "Iné" — aggregate unique event texts, sort by count desc, cap the list.
+            const entries = Object.values(g.subs).sort((a, b) => b.count - a.count);
+            if (!entries.length) {
+                bodyHtml = '<p class="stats-empty-sub">Žiadne nezaradené udalosti.</p>';
+            } else {
+                const MAX = 12;
+                const shown = entries.slice(0, MAX);
+                const rest = entries.slice(MAX);
+                const restSum = rest.reduce((s, e) => s + e.count, 0);
+                bodyHtml = shown.map(e =>
+                    `<div class="stats-line"><span>${escapeHtml(e.label)}</span><strong>${e.count}</strong></div>`
+                ).join('');
+                if (rest.length) {
+                    bodyHtml += `<div class="stats-line stats-line-muted"><span>… a ${rest.length} ďalších</span><strong>${restSum}</strong></div>`;
+                }
+                bodyHtml += `<p class="stats-fallback-hint">Udalosti, ktoré nezodpovedajú žiadnej kategórii. Ak by niektorá mala byť v niektorej kategórii, doplníme pravidlo.</p>`;
+            }
+        } else {
+            // Defined subcategories — keep them in configured order.
+            const subKeys = CATEGORIES.filter(c => c.group === gMeta.key).map(c => c.key);
+            bodyHtml = subKeys.map(k => {
+                const s = g.subs[k];
+                return `<div class="stats-line${s.count === 0 ? ' stats-line-muted' : ''}"><span>${escapeHtml(s.label)}</span><strong>${s.count}</strong></div>`;
+            }).join('');
+        }
+
+        return `
+            <details class="stats-group" data-group="${gMeta.key}"${open ? ' open' : ''}>
+                <summary class="stats-group-header">
+                    <span class="stats-group-toggle" aria-hidden="true">▶</span>
+                    <span class="stats-group-label">${escapeHtml(gMeta.label)}</span>
+                    <span class="stats-group-total">${g.total}</span>
+                </summary>
+                <div class="stats-group-body">${bodyHtml}</div>
+            </details>
+        `;
+    }).join('');
+
+    // --- Per-week jump list ---
     const weeksList = stats.weeks.length
         ? stats.weeks.map(w => `
             <div class="stats-week-item">
@@ -1171,22 +1313,18 @@ function renderStats() {
         `).join('')
         : `<p class="stats-empty">Žiadne archivované týždne pre rok ${statsYear}.</p>`;
 
+    const content = document.getElementById('statsContent');
     content.innerHTML = `
         <div class="stats-summary">
             <div class="stats-total">
                 <div class="stats-total-number">${stats.totalLiturgies}</div>
                 <div class="stats-total-label">liturgií v roku ${statsYear}</div>
-                <div class="stats-total-sub">${stats.archivedWeeksTotal} archivovaných týždňov</div>
+                <div class="stats-total-sub">${stats.totalEvents} bohoslužieb a udalostí celkom<br>${stats.archivedWeeksTotal} archivovaných týždňov</div>
             </div>
-            <div class="stats-breakdown">
-                <div class="stats-line"><span>Sv. Liturgia (Markovce)</span><strong>${stats.byCategory.regular}</strong></div>
-                <div class="stats-line"><span>Liturgia vopred posv. darov</span><strong>${stats.byCategory.presanctified}</strong></div>
-                <div class="stats-line"><span>Kačanov</span><strong>${stats.byCategory.kacanov}</strong></div>
-                <div class="stats-line"><span>Zemplínske Jastrabie</span><strong>${stats.byCategory.jastrabie}</strong></div>
-            </div>
+            <div class="stats-groups">${groupsHtml}</div>
         </div>
         <div class="stats-section">
-            <h3>Po mesiacoch</h3>
+            <h3>Liturgie po mesiacoch</h3>
             <table class="stats-month-table">
                 <thead>
                     <tr>
@@ -1217,6 +1355,16 @@ function renderStats() {
             <div class="stats-week-list">${weeksList}</div>
         </div>
     `;
+
+    // Sync open/closed state back to the expanded set on user toggle so it
+    // survives year-change re-renders.
+    content.querySelectorAll('.stats-group').forEach(el => {
+        el.addEventListener('toggle', () => {
+            const key = el.dataset.group;
+            if (el.open) expandedStatsGroups.add(key);
+            else expandedStatsGroups.delete(key);
+        });
+    });
 }
 // ───────────────────────────────────────────────────────────────────────────
 
