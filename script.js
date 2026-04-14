@@ -31,8 +31,93 @@ const state = {
         saturday: 'non-fasting',
         sunday: 'celebration'
     },
-    fastingMode: false
+    fastingMode: false,
+    // Per-week archive: { "YYYY-MM-DD": { events, feasts, dayTypes, fastingMode, saved, savedAt, updatedAt } }
+    // keyed by the Monday (week start) date of that week
+    archive: {}
 };
+
+// Stats modal state (view-only, not persisted)
+let statsYear = new Date().getFullYear();
+
+// ── Week archive helpers ───────────────────────────────────────────────────
+function getWeekKey(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function parseWeekKey(key) {
+    const [y, m, d] = key.split('-').map(Number);
+    return new Date(y, m - 1, d);
+}
+
+function currentWeekKey() {
+    return getWeekKey(state.currentWeekStart);
+}
+
+function snapshotCurrentWeekToArchive() {
+    if (!state.currentWeekStart) return;
+    const key = currentWeekKey();
+    const existing = state.archive[key] || {};
+    state.archive[key] = {
+        events: JSON.parse(JSON.stringify(state.events)),
+        feasts: { ...state.feasts },
+        dayTypes: { ...state.dayTypes },
+        fastingMode: state.fastingMode,
+        saved: existing.saved || false,
+        savedAt: existing.savedAt || null,
+        updatedAt: Date.now()
+    };
+}
+
+function hasArchiveEntry(weekKey) {
+    return Object.prototype.hasOwnProperty.call(state.archive, weekKey);
+}
+
+function loadWeekFromArchive(weekKey) {
+    const entry = state.archive[weekKey];
+    if (!entry) return false;
+    const emptyEvents = { monday: [], tuesday: [], wednesday: [], thursday: [], friday: [], saturday: [], sunday: [] };
+    const emptyFeasts = { monday: '', tuesday: '', wednesday: '', thursday: '', friday: '', saturday: '', sunday: '' };
+    const defaultTypes = { monday: 'non-fasting', tuesday: 'non-fasting', wednesday: 'fasting', thursday: 'non-fasting', friday: 'fasting', saturday: 'non-fasting', sunday: 'celebration' };
+    state.events = { ...emptyEvents, ...JSON.parse(JSON.stringify(entry.events || {})) };
+    state.feasts = { ...emptyFeasts, ...(entry.feasts || {}) };
+    state.dayTypes = { ...defaultTypes, ...(entry.dayTypes || {}) };
+    state.fastingMode = !!entry.fastingMode;
+    return true;
+}
+
+function isCurrentWeekSaved() {
+    const entry = state.archive[currentWeekKey()];
+    return entry ? !!entry.saved : false;
+}
+
+function toggleCurrentWeekSaved() {
+    snapshotCurrentWeekToArchive();
+    const key = currentWeekKey();
+    const entry = state.archive[key];
+    entry.saved = !entry.saved;
+    entry.savedAt = entry.saved ? Date.now() : null;
+    saveToLocalStorage();
+    updateSavedIndicator();
+}
+
+function updateSavedIndicator() {
+    const btn = document.getElementById('saveWeekBtn');
+    if (!btn) return;
+    if (isCurrentWeekSaved()) {
+        btn.classList.add('saved');
+        btn.textContent = '✓ Uložené — kliknúť pre zrušenie';
+    } else {
+        btn.classList.remove('saved');
+        btn.textContent = '💾 Uložiť týždeň';
+    }
+}
+// ───────────────────────────────────────────────────────────────────────────
 
 // ── Gallery ────────────────────────────────────────────────────────────────
 let galleryImages = [];
@@ -137,13 +222,18 @@ function deleteFromGallery(event, id) {
 // LocalStorage functions
 function saveToLocalStorage() {
     try {
+        // Make sure the current week's data is reflected in the archive before persisting
+        snapshotCurrentWeekToArchive();
+
         const stateToSave = {
             currentDay: state.currentDay,
             currentWeekStart: state.currentWeekStart ? state.currentWeekStart.toISOString() : null,
+            // Keep legacy top-level fields for backward compatibility with older clients/exports
             events: state.events,
             feasts: state.feasts,
             dayTypes: state.dayTypes,
             fastingMode: state.fastingMode,
+            archive: state.archive,
             iconImageData: null
         };
 
@@ -172,16 +262,30 @@ function loadFromLocalStorage() {
 
         const parsed = JSON.parse(savedState);
 
-        // Restore state
+        // Restore session state
         state.currentDay = parsed.currentDay || 'sunday';
-        state.events = parsed.events || state.events;
-        state.feasts = parsed.feasts || state.feasts;
-        state.dayTypes = parsed.dayTypes || state.dayTypes;
-        state.fastingMode = parsed.fastingMode || false;
+        state.archive = parsed.archive && typeof parsed.archive === 'object' ? parsed.archive : {};
 
         // Restore week start date
         if (parsed.currentWeekStart) {
             state.currentWeekStart = new Date(parsed.currentWeekStart);
+        }
+
+        // Load the current week's events from archive if present; otherwise fall back to
+        // the legacy top-level fields (so existing users don't lose their in-progress week),
+        // and migrate that into the archive.
+        const key = state.currentWeekStart ? getWeekKey(state.currentWeekStart) : null;
+        if (key && hasArchiveEntry(key)) {
+            loadWeekFromArchive(key);
+        } else {
+            state.events = parsed.events || state.events;
+            state.feasts = parsed.feasts || state.feasts;
+            state.dayTypes = parsed.dayTypes || state.dayTypes;
+            state.fastingMode = parsed.fastingMode || false;
+            // Migrate legacy single-week state into the archive so it counts toward stats
+            if (key && parsed.events) {
+                snapshotCurrentWeekToArchive();
+            }
         }
 
         // Restore icon image
@@ -224,13 +328,26 @@ document.addEventListener('DOMContentLoaded', () => {
     // Try to load from localStorage first
     const loaded = loadFromLocalStorage();
 
-    // If no saved state, set default week (current Monday)
-    if (!loaded || !state.currentWeekStart) {
-        const today = new Date();
-        const day = today.getDay();
-        const diff = today.getDate() - day + (day === 0 ? -6 : 1); // Monday
-        state.currentWeekStart = new Date(today.setDate(diff));
-        state.currentWeekStart.setHours(0, 0, 0, 0);
+    // Always start on today's Monday on app open, so users never land on an
+    // accidentally-locked past week. Historical weeks remain fully accessible
+    // via week nav or the stats modal.
+    const today = new Date();
+    const day = today.getDay();
+    const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+    const todaysMonday = new Date(today);
+    todaysMonday.setDate(diff);
+    todaysMonday.setHours(0, 0, 0, 0);
+
+    // If we loaded a saved session but it pointed at a different week, swap
+    // in today's Monday and try to load that week's archived data (if any).
+    const storedKey = state.currentWeekStart ? getWeekKey(state.currentWeekStart) : null;
+    state.currentWeekStart = todaysMonday;
+    const todaysKey = getWeekKey(state.currentWeekStart);
+    if (loaded && storedKey !== todaysKey) {
+        if (hasArchiveEntry(todaysKey)) {
+            loadWeekFromArchive(todaysKey);
+        }
+        // else keep the in-memory state as a template for today's week
     }
 
     initializeEventListeners();
@@ -243,7 +360,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Sync fasting mode checkbox with state
     document.getElementById('fastingMode').checked = state.fastingMode;
 
+    // Make sure the initial week is in the archive (so it shows in stats even before any edit)
+    snapshotCurrentWeekToArchive();
+
     updateUI();
+    updateSavedIndicator();
+    applyLockState();
 });
 
 function initializeEventListeners() {
@@ -261,6 +383,7 @@ function initializeEventListeners() {
     // Recommendation buttons
     document.querySelectorAll('.rec-btn').forEach(btn => {
         btn.addEventListener('click', () => {
+            if (!guardEditable()) return;
             const eventText = btn.dataset.event;
             state.events[state.currentDay].push(eventText);
             renderDayDetails();
@@ -275,6 +398,7 @@ function initializeEventListeners() {
 
     // Feast input
     document.getElementById('dayFeastName').addEventListener('input', (e) => {
+        if (!guardEditable()) { e.target.value = state.feasts[state.currentDay] || ''; return; }
         state.feasts[state.currentDay] = e.target.value;
         updatePreview();
         saveToLocalStorage();
@@ -283,6 +407,7 @@ function initializeEventListeners() {
     // Day type selector
     document.querySelectorAll('input[name="dayType"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
+            if (!guardEditable()) { e.preventDefault(); e.target.checked = false; renderDayDetails(); return; }
             state.dayTypes[state.currentDay] = e.target.value;
             updatePreview();
             saveToLocalStorage();
@@ -291,6 +416,7 @@ function initializeEventListeners() {
 
     // Fasting mode toggle
     document.getElementById('fastingMode').addEventListener('change', (e) => {
+        if (!guardEditable()) { e.target.checked = state.fastingMode; return; }
         state.fastingMode = e.target.checked;
         updatePreview();
         saveToLocalStorage();
@@ -298,16 +424,44 @@ function initializeEventListeners() {
 
     // Week navigation
     document.getElementById('prevWeek').addEventListener('click', () => {
-        state.currentWeekStart.setDate(state.currentWeekStart.getDate() - 7);
-        updateUI();
-        saveToLocalStorage();
+        navigateWeeks(-1);
     });
 
     document.getElementById('nextWeek').addEventListener('click', () => {
-        state.currentWeekStart.setDate(state.currentWeekStart.getDate() + 7);
-        updateUI();
-        saveToLocalStorage();
+        navigateWeeks(1);
     });
+}
+
+function navigateWeeks(deltaWeeks) {
+    // Persist whatever is currently on screen under the current week key
+    snapshotCurrentWeekToArchive();
+
+    // Move to the target week
+    state.currentWeekStart.setDate(state.currentWeekStart.getDate() + deltaWeeks * 7);
+    const key = getWeekKey(state.currentWeekStart);
+
+    if (hasArchiveEntry(key)) {
+        // Archived week — load exactly what was planned for that week.
+        loadWeekFromArchive(key);
+    } else if (isWeekFullyPast(state.currentWeekStart)) {
+        // Past week with no archive — show empty so we don't pretend the
+        // current-week program was actually used that week.
+        resetCurrentWeekToEmpty();
+    }
+    // Otherwise (future / current week with no archive): keep current in-memory
+    // state as a starting template so the user can iterate week-over-week.
+
+    updateUI();
+    renderDayDetails();
+    document.getElementById('fastingMode').checked = state.fastingMode;
+    updateSavedIndicator();
+    applyLockState();
+    saveToLocalStorage();
+}
+
+function resetCurrentWeekToEmpty() {
+    state.events = { monday: [], tuesday: [], wednesday: [], thursday: [], friday: [], saturday: [], sunday: [] };
+    state.feasts = { monday: '', tuesday: '', wednesday: '', thursday: '', friday: '', saturday: '', sunday: '' };
 }
 
 function updateUI() {
@@ -354,6 +508,7 @@ function handleGalleryUpload(e) {
 }
 
 function loadStandardWeek() {
+    if (!guardEditable()) return;
     state.events = {
         monday: [],
         tuesday: ['16:00 Katechéza'],
@@ -378,6 +533,7 @@ function loadStandardWeek() {
 }
 
 function loadFastingWeek() {
+    if (!guardEditable()) return;
     state.events = {
         monday: [],
         tuesday: [],
@@ -408,6 +564,7 @@ function loadFastingWeek() {
 }
 
 function clearAllEvents() {
+    if (!guardEditable()) return;
     state.events = {
         monday: [], tuesday: [], wednesday: [], thursday: [],
         friday: [], saturday: [], sunday: []
@@ -429,26 +586,45 @@ function renderDayDetails() {
     const eventsList = document.getElementById('eventsList');
     const feastInput = document.getElementById('dayFeastName');
     const currentEvents = state.events[state.currentDay];
+    const locked = isCurrentWeekLocked();
 
     // Update feast input
     feastInput.value = state.feasts[state.currentDay];
+    feastInput.disabled = locked;
 
     // Update day type radio buttons
     const currentDayType = state.dayTypes[state.currentDay];
     document.querySelectorAll('input[name="dayType"]').forEach(radio => {
         radio.checked = radio.value === currentDayType;
+        radio.disabled = locked;
     });
 
     // Update events list
-    eventsList.innerHTML = currentEvents.map((event, index) => `
-        <div class="event-item" draggable="true" data-index="${index}">
-            <span class="event-handle">☰</span>
-            <input type="text" value="${event}" onchange="updateEvent(${index}, this.value)">
-            <button onclick="removeEvent(${index})">🗑️</button>
-        </div>
-    `).join('');
+    eventsList.innerHTML = currentEvents.map((event, index) => {
+        const safeValue = String(event).replace(/"/g, '&quot;');
+        if (locked) {
+            return `
+                <div class="event-item event-item--locked" data-index="${index}">
+                    <span class="event-handle" aria-hidden="true">🔒</span>
+                    <input type="text" value="${safeValue}" readonly>
+                </div>
+            `;
+        }
+        return `
+            <div class="event-item" draggable="true" data-index="${index}">
+                <span class="event-handle">☰</span>
+                <input type="text" value="${safeValue}" onchange="updateEvent(${index}, this.value)">
+                <button onclick="removeEvent(${index})">🗑️</button>
+            </div>
+        `;
+    }).join('');
 
-    initializeDragAndDrop();
+    // Show empty-state hint when locked and no events
+    if (locked && currentEvents.length === 0) {
+        eventsList.innerHTML = '<p class="events-empty-locked">Žiadne udalosti pre tento deň.</p>';
+    }
+
+    if (!locked) initializeDragAndDrop();
 }
 
 function initializeDragAndDrop() {
@@ -498,6 +674,7 @@ function getDragAfterElement(container, y) {
 }
 
 function addEventToCurrentDay() {
+    if (!guardEditable()) return;
     state.events[state.currentDay].push('');
     renderDayDetails();
     updatePreview();
@@ -505,12 +682,14 @@ function addEventToCurrentDay() {
 }
 
 function updateEvent(index, value) {
+    if (!guardEditable()) { renderDayDetails(); return; }
     state.events[state.currentDay][index] = value;
     updatePreview();
     saveToLocalStorage();
 }
 
 function removeEvent(index) {
+    if (!guardEditable()) return;
     state.events[state.currentDay].splice(index, 1);
     renderDayDetails();
     updatePreview();
@@ -810,6 +989,253 @@ function generateImage() {
     link.href = exportCanvas.toDataURL('image/png');
     link.click();
 }
+
+// ── Past-week locking ──────────────────────────────────────────────────────
+// Session-only override: weeks unlocked via the Odomknúť button while the tab is open.
+const sessionUnlockedWeeks = new Set();
+
+function isWeekFullyPast(weekStart) {
+    if (!weekStart) return false;
+    const end = new Date(weekStart);
+    end.setDate(end.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    return end < new Date();
+}
+
+function isCurrentWeekLocked() {
+    if (!state.currentWeekStart) return false;
+    if (!isWeekFullyPast(state.currentWeekStart)) return false;
+    return !sessionUnlockedWeeks.has(currentWeekKey());
+}
+
+function unlockCurrentWeek() {
+    if (!isCurrentWeekLocked()) return;
+    const ok = confirm('Tento týždeň už prešiel. Naozaj chcete odomknúť minulý týždeň pre úpravu?\n\nZmeny ovplyvnia ročné štatistiky.');
+    if (!ok) return;
+    sessionUnlockedWeeks.add(currentWeekKey());
+    applyLockState();
+}
+
+function applyLockState() {
+    const locked = isCurrentWeekLocked();
+    document.body.classList.toggle('week-locked', locked);
+
+    const banner = document.getElementById('weekLockBanner');
+    if (banner) banner.style.display = locked ? 'flex' : 'none';
+
+    // Disable specific form controls directly so keyboard nav is also blocked
+    const toToggle = ['dayFeastName', 'fastingMode'];
+    toToggle.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = locked;
+    });
+    document.querySelectorAll('input[name="dayType"]').forEach(r => r.disabled = locked);
+
+    // Re-render day details so event inputs pick up read-only state
+    renderDayDetails();
+}
+
+function guardEditable(silent) {
+    if (isCurrentWeekLocked()) {
+        if (!silent) {
+            // Subtle nudge — a banner + alert would be noisy, so just flash the banner.
+            const banner = document.getElementById('weekLockBanner');
+            if (banner) {
+                banner.classList.remove('flash');
+                // force reflow to restart animation
+                void banner.offsetWidth;
+                banner.classList.add('flash');
+            }
+        }
+        return false;
+    }
+    return true;
+}
+// ───────────────────────────────────────────────────────────────────────────
+
+// ── Stats ──────────────────────────────────────────────────────────────────
+const DAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const FULL_MONTH_NAMES = ['Január', 'Február', 'Marec', 'Apríl', 'Máj', 'Jún',
+    'Júl', 'August', 'September', 'Október', 'November', 'December'];
+
+function categorizeEvent(eventText) {
+    if (!eventText) return null;
+    const t = eventText.toLowerCase();
+    // Presanctified liturgy (Lent)
+    if (/vopred\s*posv/.test(t) || /vopred\s*prepodobn/.test(t) || /\bvopred\b/.test(t)) {
+        if (/liturgia|lit\./.test(t)) return 'presanctified';
+    }
+    // Filial parishes — these events are de-facto liturgies even when the word "liturgia" is omitted
+    if (/kačanov/.test(t)) return 'kacanov';
+    if (/jastrabie/.test(t)) return 'jastrabie';
+    // Regular Divine Liturgy at home parish
+    if (/liturgia|\blit\./.test(t)) return 'regular';
+    return null;
+}
+
+function computeStats(year, savedOnly) {
+    const stats = {
+        year,
+        totalLiturgies: 0,
+        byCategory: { regular: 0, presanctified: 0, kacanov: 0, jastrabie: 0 },
+        byMonth: Array.from({ length: 12 }, () => ({ total: 0, regular: 0, presanctified: 0, kacanov: 0, jastrabie: 0 })),
+        weeks: [],
+        archivedWeeksTotal: 0,
+        savedWeeksTotal: 0
+    };
+
+    Object.keys(state.archive).sort().forEach(weekKey => {
+        const entry = state.archive[weekKey];
+        if (savedOnly && !entry.saved) return;
+
+        const weekStart = parseWeekKey(weekKey);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+
+        // Does this week touch the selected year at all?
+        const touchesYear = weekStart.getFullYear() === year || weekEnd.getFullYear() === year;
+        if (!touchesYear) return;
+
+        stats.archivedWeeksTotal++;
+        if (entry.saved) stats.savedWeeksTotal++;
+
+        let weekCount = 0;
+        DAY_KEYS.forEach((dayKey, idx) => {
+            const dayDate = new Date(weekStart);
+            dayDate.setDate(weekStart.getDate() + idx);
+            // Attribute each day's events to that day's year — handles week crossing year boundary
+            if (dayDate.getFullYear() !== year) return;
+            const dayEvents = (entry.events && entry.events[dayKey]) || [];
+            const month = dayDate.getMonth();
+            dayEvents.forEach(ev => {
+                const cat = categorizeEvent(ev);
+                if (!cat) return;
+                stats.totalLiturgies++;
+                stats.byCategory[cat]++;
+                stats.byMonth[month].total++;
+                stats.byMonth[month][cat]++;
+                weekCount++;
+            });
+        });
+
+        stats.weeks.push({
+            weekKey,
+            weekStart,
+            weekEnd,
+            saved: !!entry.saved,
+            count: weekCount
+        });
+    });
+
+    return stats;
+}
+
+function openStats() {
+    // Flush current week into archive so today's edits count
+    snapshotCurrentWeekToArchive();
+    statsYear = new Date().getFullYear();
+    renderStats();
+    document.getElementById('statsModal').style.display = 'flex';
+}
+
+function closeStats() {
+    document.getElementById('statsModal').style.display = 'none';
+}
+
+function changeStatsYear(delta) {
+    statsYear += delta;
+    renderStats();
+}
+
+function formatWeekRange(start, end) {
+    const sameYear = start.getFullYear() === end.getFullYear();
+    const startStr = `${start.getDate()}. ${monthNames[start.getMonth()]}${sameYear ? '' : ' ' + start.getFullYear()}`;
+    const endStr = `${end.getDate()}. ${monthNames[end.getMonth()]} ${end.getFullYear()}`;
+    return `${startStr} – ${endStr}`;
+}
+
+function jumpToWeek(weekKey) {
+    snapshotCurrentWeekToArchive();
+    state.currentWeekStart = parseWeekKey(weekKey);
+    if (hasArchiveEntry(weekKey)) {
+        loadWeekFromArchive(weekKey);
+    }
+    saveToLocalStorage();
+    updateUI();
+    renderDayDetails();
+    document.getElementById('fastingMode').checked = state.fastingMode;
+    updateSavedIndicator();
+    applyLockState();
+    closeStats();
+}
+
+function renderStats() {
+    const savedOnlyEl = document.getElementById('statsSavedOnly');
+    const savedOnly = savedOnlyEl ? savedOnlyEl.checked : false;
+    const stats = computeStats(statsYear, savedOnly);
+
+    document.getElementById('statsYearDisplay').textContent = statsYear;
+
+    const content = document.getElementById('statsContent');
+    const weeksList = stats.weeks.length
+        ? stats.weeks.map(w => `
+            <div class="stats-week-item${w.saved ? ' saved' : ''}">
+                <span class="stats-week-badge" title="${w.saved ? 'Uložený týždeň' : 'Neuložený (rozpracovaný) týždeň'}">${w.saved ? '✓' : '○'}</span>
+                <span class="stats-week-date">${formatWeekRange(w.weekStart, w.weekEnd)}</span>
+                <span class="stats-week-count">${w.count} lit.</span>
+                <button class="stats-week-jump" onclick="jumpToWeek('${w.weekKey}')">Otvoriť</button>
+            </div>
+        `).join('')
+        : `<p class="stats-empty">Žiadne archivované týždne pre rok ${statsYear}${savedOnly ? ' (s filtrom iba uložené)' : ''}.</p>`;
+
+    content.innerHTML = `
+        <div class="stats-summary">
+            <div class="stats-total">
+                <div class="stats-total-number">${stats.totalLiturgies}</div>
+                <div class="stats-total-label">liturgií v roku ${statsYear}</div>
+                <div class="stats-total-sub">${stats.savedWeeksTotal} uložených / ${stats.archivedWeeksTotal} archivovaných týždňov</div>
+            </div>
+            <div class="stats-breakdown">
+                <div class="stats-line"><span>Sv. Liturgia (Markovce)</span><strong>${stats.byCategory.regular}</strong></div>
+                <div class="stats-line"><span>Liturgia vopred posv. darov</span><strong>${stats.byCategory.presanctified}</strong></div>
+                <div class="stats-line"><span>Kačanov</span><strong>${stats.byCategory.kacanov}</strong></div>
+                <div class="stats-line"><span>Zemplínske Jastrabie</span><strong>${stats.byCategory.jastrabie}</strong></div>
+            </div>
+        </div>
+        <div class="stats-section">
+            <h3>Po mesiacoch</h3>
+            <table class="stats-month-table">
+                <thead>
+                    <tr>
+                        <th>Mesiac</th>
+                        <th>Spolu</th>
+                        <th>Sv. lit.</th>
+                        <th>Vopred</th>
+                        <th>Kač.</th>
+                        <th>Jastr.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${stats.byMonth.map((m, i) => `
+                        <tr class="${m.total === 0 ? 'empty' : ''}">
+                            <td>${FULL_MONTH_NAMES[i]}</td>
+                            <td><strong>${m.total}</strong></td>
+                            <td>${m.regular}</td>
+                            <td>${m.presanctified}</td>
+                            <td>${m.kacanov}</td>
+                            <td>${m.jastrabie}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+        <div class="stats-section">
+            <h3>Archivované týždne (${stats.weeks.length})</h3>
+            <div class="stats-week-list">${weeksList}</div>
+        </div>
+    `;
+}
+// ───────────────────────────────────────────────────────────────────────────
 
 // polyfill for roundRect
 if (!CanvasRenderingContext2D.prototype.roundRect) {
