@@ -294,6 +294,10 @@ body {
     transition: all 0.3s ease;
 }
 
+.day-btn-short {
+    display: none;
+}
+
 .day-btn:hover {
     border-color: var(--primary-blue);
 }
@@ -1324,12 +1328,37 @@ body.week-locked .fasting-mode-label {
         font-size: 0.95rem;
     }
 
+    /* Compact single-row day selector with Po/Út/St/… shortcuts. */
     .day-selector {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(7, 1fr);
+        gap: 4px;
     }
 
+    .day-btn {
+        padding: 10px 2px;
+        font-size: 0.85rem;
+    }
+
+    .day-btn-full {
+        display: none;
+    }
+
+    .day-btn-short {
+        display: inline;
+    }
+
+    /* Keep 2-column recommendations, truncate text so cards stay tidy. */
     .recommendations {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .rec-btn {
+        padding: 10px 10px;
+        font-size: 0.82rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
     }
 
     .template-buttons {
@@ -1340,12 +1369,10 @@ body.week-locked .fasting-mode-label {
         flex-direction: column;
     }
 
-    .day-type-selector {
-        flex-wrap: wrap;
-    }
-
-    .day-type-option {
-        flex: 1 1 calc(50% - 4px);
+    /* Keep three day-type chips on one row; shrink label so they fit. */
+    .day-type-label {
+        padding: 10px 2px;
+        font-size: 0.72rem;
     }
 
     .week-nav {
