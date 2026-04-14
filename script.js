@@ -455,6 +455,38 @@ function initializeEventListeners() {
     document.getElementById('nextWeek').addEventListener('click', () => {
         navigateWeeks(1);
     });
+
+    // View switcher (mobile / tablet portrait)
+    initializeViewSwitcher();
+}
+
+function initializeViewSwitcher() {
+    const main = document.querySelector('.main-content');
+    const buttons = document.querySelectorAll('.view-switcher-btn');
+    if (!main || buttons.length === 0) return;
+
+    buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const view = btn.dataset.view; // 'editor' or 'preview'
+            if (!view) return;
+
+            buttons.forEach(b => {
+                const active = b.dataset.view === view;
+                b.classList.toggle('active', active);
+                b.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+
+            main.classList.remove('view-editor', 'view-preview');
+            main.classList.add(`view-${view}`);
+
+            // When switching to the preview, scroll the switcher back into view
+            // and repaint — the canvas may have been offscreen while hidden.
+            if (view === 'preview') {
+                updatePreview();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        });
+    });
 }
 
 function navigateWeeks(deltaWeeks) {

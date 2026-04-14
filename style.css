@@ -27,6 +27,54 @@ body {
     padding: 20px;
 }
 
+/* View switcher (tabs between Editor and Preview on narrow screens) ────── */
+.view-switcher {
+    display: none;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 6px;
+    background: var(--card-bg);
+    border-radius: 14px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+    position: sticky;
+    top: 10px;
+    z-index: 50;
+}
+
+.view-switcher-btn {
+    padding: 12px 16px;
+    background: transparent;
+    border: none;
+    border-radius: 10px;
+    color: var(--text-gray);
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.view-switcher-btn:hover:not(.active) {
+    color: var(--text-light);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.view-switcher-btn.active {
+    background: linear-gradient(135deg, var(--primary-blue) 0%, var(--purple) 100%);
+    color: white;
+    box-shadow: 0 4px 15px rgba(65, 105, 225, 0.35);
+}
+
+.view-switcher-icon {
+    font-size: 1.05rem;
+    line-height: 1;
+}
+
 .container {
     max-width: 1800px;
     margin: 0 auto;
@@ -55,7 +103,7 @@ body {
 
 .main-content {
     display: grid;
-    grid-template-columns: 500px 1fr;
+    grid-template-columns: minmax(420px, 500px) 1fr;
     gap: 30px;
     align-items: start;
 }
@@ -1173,21 +1221,107 @@ body.week-locked .fasting-mode-label {
     font-style: italic;
 }
 
-/* Responsive */
-@media (max-width: 1400px) {
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+/* Tablet landscape / smaller desktop: keep 2 columns but tighten controls */
+@media (max-width: 1300px) and (min-width: 1024px) {
+    .main-content {
+        grid-template-columns: minmax(360px, 440px) 1fr;
+        gap: 20px;
+    }
+
+    .controls-panel {
+        padding: 22px;
+    }
+
+    .preview-panel {
+        padding: 22px;
+    }
+}
+
+/* Mobile & tablet portrait: switch between Editor and Preview via tabs */
+@media (max-width: 1023px) {
+    body {
+        padding: 14px;
+    }
+
+    .header {
+        margin-bottom: 20px;
+        padding: 22px 20px;
+    }
+
+    .view-switcher {
+        display: grid;
+    }
+
     .main-content {
         grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
+    /* Show only the active panel; keep the other in the DOM so the canvas
+       still gets painted and scroll state / inputs survive the switch. */
+    .main-content.view-editor .preview-panel,
+    .main-content.view-preview .controls-panel {
+        display: none;
+    }
+
+    .controls-panel {
+        max-height: none;
+        overflow-y: visible;
+        padding: 22px;
     }
 
     .preview-panel {
         position: relative;
         top: 0;
+        padding: 22px;
     }
 }
 
+/* Phone-sized tweaks */
 @media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+
+    .header {
+        padding: 20px 16px;
+        margin-bottom: 16px;
+        border-radius: 16px;
+    }
+
     .header h1 {
-        font-size: 1.8rem;
+        font-size: 1.6rem;
+    }
+
+    .header p {
+        font-size: 1rem;
+    }
+
+    .controls-panel,
+    .preview-panel {
+        padding: 18px;
+        border-radius: 16px;
+    }
+
+    .preview-container {
+        padding: 12px;
+    }
+
+    .control-section {
+        margin-bottom: 22px;
+        padding-bottom: 22px;
+    }
+
+    .control-section h2 {
+        font-size: 1.15rem;
+        margin-bottom: 14px;
+    }
+
+    .view-switcher-btn {
+        padding: 10px 12px;
+        font-size: 0.95rem;
     }
 
     .day-selector {
@@ -1200,6 +1334,30 @@ body.week-locked .fasting-mode-label {
 
     .template-buttons {
         grid-template-columns: 1fr;
+    }
+
+    .icon-controls {
+        flex-direction: column;
+    }
+
+    .day-type-selector {
+        flex-wrap: wrap;
+    }
+
+    .day-type-option {
+        flex: 1 1 calc(50% - 4px);
+    }
+
+    .week-nav {
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+    }
+
+    .week-nav #weekDisplay {
+        order: -1;
+        flex-basis: 100%;
+        text-align: center;
     }
 
     .week-save-row {
@@ -1229,5 +1387,18 @@ body.week-locked .fasting-mode-label {
     .stats-month-table td {
         padding: 6px 6px;
         font-size: 0.8rem;
+    }
+}
+
+/* Very small phones */
+@media (max-width: 420px) {
+    .header h1 {
+        font-size: 1.35rem;
+    }
+
+    .view-switcher-btn {
+        padding: 10px 8px;
+        font-size: 0.9rem;
+        gap: 6px;
     }
 }

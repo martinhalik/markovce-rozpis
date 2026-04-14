@@ -20,7 +20,18 @@
             <p>Generátor liturgického rozpisu pre farnosť Markovce</p>
         </header>
 
-        <div class="main-content">
+        <div class="view-switcher" role="tablist" aria-label="Prepnúť pohľad">
+            <button type="button" class="view-switcher-btn active" data-view="editor" role="tab" aria-selected="true">
+                <span class="view-switcher-icon">✏️</span>
+                <span class="view-switcher-label">Úpravy</span>
+            </button>
+            <button type="button" class="view-switcher-btn" data-view="preview" role="tab" aria-selected="false">
+                <span class="view-switcher-icon">👁️</span>
+                <span class="view-switcher-label">Náhľad</span>
+            </button>
+        </div>
+
+        <div class="main-content view-editor">
             <!-- Left side - Controls -->
             <div class="controls-panel">
                 <section class="control-section">
