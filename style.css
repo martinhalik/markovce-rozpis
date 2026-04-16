@@ -75,6 +75,29 @@ body {
     line-height: 1;
 }
 
+/* Unified keyboard focus ring for every interactive control. The native
+   Chrome/Firefox default is inconsistent against our dark/gradient buttons,
+   so give every :focus-visible a crisp blue ring with offset. */
+.view-switcher-btn:focus-visible,
+.nav-btn:focus-visible,
+.template-btn:focus-visible,
+.rec-btn:focus-visible,
+.day-btn:focus-visible,
+.add-event-btn:focus-visible,
+.export-btn:focus-visible,
+.stats-open-btn:focus-visible,
+.icon-upload-btn:focus-visible,
+.icon-gallery-btn:focus-visible,
+.gallery-close-btn:focus-visible,
+.gallery-add-btn:focus-visible,
+.year-nav-btn:focus-visible,
+.stats-week-jump:focus-visible,
+.week-lock-unlock:focus-visible,
+.day-type-option input[type="radio"]:focus-visible + .day-type-label {
+    outline: 2px solid var(--primary-blue);
+    outline-offset: 2px;
+}
+
 .container {
     max-width: 1800px;
     margin: 0 auto;
@@ -322,8 +345,13 @@ body {
 }
 
 .day-type-option input[type="radio"] {
-    display: none;
-    /* Hide the radio circle */
+    /* Visually hide the native radio but keep it focusable for keyboard
+       users — `display: none` would take it out of the a11y tree. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
 }
 
 .day-type-label {
@@ -331,8 +359,10 @@ body {
     border-radius: 8px;
     font-weight: 700;
     font-size: 0.8rem;
+    line-height: 1.2;
     transition: all 0.2s ease;
     flex: 1;
+    min-width: 0;
     text-align: center;
     border: 2px solid transparent;
     opacity: 0.6;

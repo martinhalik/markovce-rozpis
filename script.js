@@ -462,29 +462,48 @@ function initializeEventListeners() {
 
 function initializeViewSwitcher() {
     const main = document.querySelector('.main-content');
-    const buttons = document.querySelectorAll('.view-switcher-btn');
+    const buttons = Array.from(document.querySelectorAll('.view-switcher-btn'));
     if (!main || buttons.length === 0) return;
 
-    buttons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            const view = btn.dataset.view; // 'editor' or 'preview'
-            if (!view) return;
+    const activate = (view, { focus = false } = {}) => {
+        if (!view) return;
+        buttons.forEach(b => {
+            const active = b.dataset.view === view;
+            b.classList.toggle('active', active);
+            b.setAttribute('aria-selected', active ? 'true' : 'false');
+            // Roving tabindex — only the active tab is reachable via Tab key;
+            // arrow keys move focus inside the tablist (WAI-ARIA APG pattern).
+            b.setAttribute('tabindex', active ? '0' : '-1');
+            if (active && focus) b.focus();
+        });
 
-            buttons.forEach(b => {
-                const active = b.dataset.view === view;
-                b.classList.toggle('active', active);
-                b.setAttribute('aria-selected', active ? 'true' : 'false');
-            });
+        main.classList.remove('view-editor', 'view-preview');
+        main.classList.add(`view-${view}`);
 
-            main.classList.remove('view-editor', 'view-preview');
-            main.classList.add(`view-${view}`);
-
-            // When switching to the preview, scroll the switcher back into view
-            // and repaint — the canvas may have been offscreen while hidden.
-            if (view === 'preview') {
-                updatePreview();
+        // When switching to the preview, repaint — the canvas may have been
+        // offscreen while hidden — then bring the preview to the top of the
+        // viewport so users see it without having to scroll.
+        if (view === 'preview') {
+            updatePreview();
+            if (window.scrollY > 0) {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }
+        }
+    };
+
+    buttons.forEach((btn, index) => {
+        btn.addEventListener('click', () => activate(btn.dataset.view));
+        btn.addEventListener('keydown', (e) => {
+            // ← / → / Home / End navigate between tabs within the tablist.
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight'
+                && e.key !== 'Home' && e.key !== 'End') return;
+            e.preventDefault();
+            let nextIndex = index;
+            if (e.key === 'ArrowLeft') nextIndex = (index - 1 + buttons.length) % buttons.length;
+            else if (e.key === 'ArrowRight') nextIndex = (index + 1) % buttons.length;
+            else if (e.key === 'Home') nextIndex = 0;
+            else if (e.key === 'End') nextIndex = buttons.length - 1;
+            activate(buttons[nextIndex].dataset.view, { focus: true });
         });
     });
 }

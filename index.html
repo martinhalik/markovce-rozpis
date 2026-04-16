@@ -21,19 +21,19 @@
         </header>
 
         <div class="view-switcher" role="tablist" aria-label="Prepnúť pohľad">
-            <button type="button" class="view-switcher-btn active" data-view="editor" role="tab" aria-selected="true">
-                <span class="view-switcher-icon">✏️</span>
+            <button type="button" class="view-switcher-btn active" data-view="editor" role="tab" aria-selected="true" aria-controls="controlsPanel" id="viewTabEditor">
+                <span class="view-switcher-icon" aria-hidden="true">✏️</span>
                 <span class="view-switcher-label">Úpravy</span>
             </button>
-            <button type="button" class="view-switcher-btn" data-view="preview" role="tab" aria-selected="false">
-                <span class="view-switcher-icon">👁️</span>
+            <button type="button" class="view-switcher-btn" data-view="preview" role="tab" aria-selected="false" aria-controls="previewPanel" id="viewTabPreview" tabindex="-1">
+                <span class="view-switcher-icon" aria-hidden="true">👁️</span>
                 <span class="view-switcher-label">Náhľad</span>
             </button>
         </div>
 
         <div class="main-content view-editor">
             <!-- Left side - Controls -->
-            <div class="controls-panel">
+            <div class="controls-panel" id="controlsPanel">
                 <section class="control-section">
                     <h2>Základné informácie</h2>
                     <div class="form-group">
@@ -143,7 +143,7 @@
             </div>
 
             <!-- Right side - Preview -->
-            <div class="preview-panel">
+            <div class="preview-panel" id="previewPanel">
                 <h2>Náhľad</h2>
                 <div class="preview-container">
                     <canvas id="previewCanvas" width="400" height="400"></canvas>
