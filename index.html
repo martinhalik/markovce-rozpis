@@ -20,9 +20,20 @@
             <p>Generátor liturgického rozpisu pre farnosť Markovce</p>
         </header>
 
-        <div class="main-content">
+        <div class="view-switcher" role="tablist" aria-label="Prepnúť pohľad">
+            <button type="button" class="view-switcher-btn active" data-view="editor" role="tab" aria-selected="true" aria-controls="controlsPanel" id="viewTabEditor">
+                <span class="view-switcher-icon" aria-hidden="true">✏️</span>
+                <span class="view-switcher-label">Úpravy</span>
+            </button>
+            <button type="button" class="view-switcher-btn" data-view="preview" role="tab" aria-selected="false" aria-controls="previewPanel" id="viewTabPreview" tabindex="-1">
+                <span class="view-switcher-icon" aria-hidden="true">👁️</span>
+                <span class="view-switcher-label">Náhľad</span>
+            </button>
+        </div>
+
+        <div class="main-content view-editor">
             <!-- Left side - Controls -->
-            <div class="controls-panel">
+            <div class="controls-panel" id="controlsPanel">
                 <section class="control-section">
                     <h2>Základné informácie</h2>
                     <div class="form-group">
@@ -91,13 +102,13 @@
                     <h2>Úprava udalostí</h2>
                     <div id="dayEditor">
                         <div class="day-selector">
-                            <button class="day-btn" data-day="monday">Pondelok</button>
-                            <button class="day-btn" data-day="tuesday">Utorok</button>
-                            <button class="day-btn" data-day="wednesday">Streda</button>
-                            <button class="day-btn" data-day="thursday">Štvrtok</button>
-                            <button class="day-btn" data-day="friday">Piatok</button>
-                            <button class="day-btn" data-day="saturday">Sobota</button>
-                            <button class="day-btn active" data-day="sunday">Nedeľa</button>
+                            <button class="day-btn" data-day="monday"><span class="day-btn-full">Pondelok</span><span class="day-btn-short">Po</span></button>
+                            <button class="day-btn" data-day="tuesday"><span class="day-btn-full">Utorok</span><span class="day-btn-short">Út</span></button>
+                            <button class="day-btn" data-day="wednesday"><span class="day-btn-full">Streda</span><span class="day-btn-short">St</span></button>
+                            <button class="day-btn" data-day="thursday"><span class="day-btn-full">Štvrtok</span><span class="day-btn-short">Št</span></button>
+                            <button class="day-btn" data-day="friday"><span class="day-btn-full">Piatok</span><span class="day-btn-short">Pi</span></button>
+                            <button class="day-btn" data-day="saturday"><span class="day-btn-full">Sobota</span><span class="day-btn-short">So</span></button>
+                            <button class="day-btn active" data-day="sunday"><span class="day-btn-full">Nedeľa</span><span class="day-btn-short">Ne</span></button>
                         </div>
                         <div class="form-group">
                             <label>Typ dňa:</label>
@@ -132,7 +143,7 @@
             </div>
 
             <!-- Right side - Preview -->
-            <div class="preview-panel">
+            <div class="preview-panel" id="previewPanel">
                 <h2>Náhľad</h2>
                 <div class="preview-container">
                     <canvas id="previewCanvas" width="400" height="400"></canvas>
