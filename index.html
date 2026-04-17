@@ -22,10 +22,6 @@
                     <p>Generátor liturgického rozpisu pre farnosť Markovce</p>
                 </div>
                 <nav class="header-nav" aria-label="Hlavná navigácia">
-                    <button class="header-nav-btn" onclick="jumpToThisWeek()">
-                        <span class="header-nav-icon" aria-hidden="true">📅</span>
-                        <span class="header-nav-label">Tento týždeň</span>
-                    </button>
                     <button class="header-nav-btn" onclick="openStats()">
                         <span class="header-nav-icon" aria-hidden="true">📊</span>
                         <span class="header-nav-label">Štatistiky</span>
@@ -56,6 +52,7 @@
                             <button id="prevWeek" class="nav-btn">◀ Predošlý</button>
                             <span id="weekDisplay">--. --. – --. --.</span>
                             <button id="nextWeek" class="nav-btn">Nasledujúci ▶</button>
+                            <button class="today-link" onclick="jumpToThisWeek()">Dnes</button>
                         </div>
                         <div id="weekLockBanner" class="week-lock-banner" style="display:none">
                             <span class="week-lock-icon">🔒</span>
