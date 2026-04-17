@@ -16,8 +16,18 @@
 <body>
     <div class="container">
         <header class="header">
-            <h1>Generátor týždenného rozpisu</h1>
-            <p>Generátor liturgického rozpisu pre farnosť Markovce</p>
+            <div class="header-content">
+                <div class="header-text">
+                    <h1>Generátor týždenného rozpisu</h1>
+                    <p>Generátor liturgického rozpisu pre farnosť Markovce</p>
+                </div>
+                <nav class="header-nav" aria-label="Hlavná navigácia">
+                    <button class="header-nav-btn" onclick="openStats()">
+                        <span class="header-nav-icon" aria-hidden="true">📊</span>
+                        <span class="header-nav-label">Štatistiky</span>
+                    </button>
+                </nav>
+            </div>
         </header>
 
         <div class="view-switcher" role="tablist" aria-label="Prepnúť pohľad">
@@ -37,14 +47,11 @@
                 <section class="control-section">
                     <h2>Základné informácie</h2>
                     <div class="form-group">
-                        <label>Týždeň:</label>
+                        <label class="week-label">Týždeň: <button class="today-link" onclick="jumpToThisWeek()">Dnes</button></label>
                         <div class="week-nav">
                             <button id="prevWeek" class="nav-btn">◀ Predošlý</button>
                             <span id="weekDisplay">--. --. – --. --.</span>
                             <button id="nextWeek" class="nav-btn">Nasledujúci ▶</button>
-                        </div>
-                        <div class="week-save-row">
-                            <button class="stats-open-btn" onclick="openStats()">📊 Štatistiky</button>
                         </div>
                         <div id="weekLockBanner" class="week-lock-banner" style="display:none">
                             <span class="week-lock-icon">🔒</span>

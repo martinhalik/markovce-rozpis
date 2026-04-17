@@ -104,12 +104,71 @@ body {
 }
 
 .header {
-    text-align: center;
     margin-bottom: 40px;
-    padding: 30px;
+    padding: 24px 32px;
     background: linear-gradient(135deg, var(--primary-blue) 0%, var(--purple) 100%);
     border-radius: 20px;
     box-shadow: var(--shadow-lg);
+}
+
+.header-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+
+.header-text {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+}
+
+.header-nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.header-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 18px;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 12px;
+    color: white;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.header-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.26);
+    border-color: rgba(255, 255, 255, 0.6);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
+.header-nav-btn:focus-visible {
+    outline: 2px solid white;
+    outline-offset: 2px;
+}
+
+.header-nav-btn:active {
+    transform: translateY(0);
+}
+
+.header-nav-icon {
+    font-size: 1.05rem;
+    line-height: 1;
 }
 
 .header h1 {
@@ -211,6 +270,36 @@ body {
 }
 
 /* Week Navigation */
+label.week-label {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.today-link {
+    background: none;
+    border: none;
+    color: var(--primary-blue);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    transition: color 0.15s ease;
+    margin-left: auto;
+}
+
+.today-link:hover {
+    color: var(--purple);
+}
+
+.today-link:focus-visible {
+    outline: 2px solid var(--primary-blue);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
 .week-nav {
     display: flex;
     align-items: center;
@@ -768,32 +857,6 @@ body {
 .gallery-item-delete:hover {
     background: var(--primary-red);
     transform: scale(1.1);
-}
-
-/* ── Stats button row ───────────────────────────────────────────────────── */
-.week-save-row {
-    display: flex;
-    gap: 10px;
-    margin-top: 10px;
-}
-
-.stats-open-btn {
-    flex: 1;
-    padding: 10px 14px;
-    border-radius: 10px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: 2px solid var(--purple);
-    background: var(--dark-bg);
-    color: var(--text-light);
-}
-
-.stats-open-btn:hover {
-    background: var(--purple);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 15px rgba(155, 89, 182, 0.4);
 }
 
 /* ── Auto-save toast ────────────────────────────────────────────────────── */
@@ -1417,8 +1480,28 @@ body.week-locked .fasting-mode-label {
         text-align: center;
     }
 
-    .week-save-row {
+    .header {
+        padding: 20px 20px;
+    }
+
+    .header-content {
         flex-direction: column;
+        align-items: stretch;
+        gap: 14px;
+        text-align: center;
+    }
+
+    .header-text {
+        text-align: center;
+    }
+
+    .header-nav {
+        justify-content: center;
+    }
+
+    .header-nav-btn {
+        width: 100%;
+        justify-content: center;
     }
 
     .stats-summary {

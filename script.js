@@ -508,6 +508,27 @@ function initializeViewSwitcher() {
     });
 }
 
+function jumpToThisWeek() {
+    const today = new Date();
+    const dow = today.getDay();
+    const diff = today.getDate() - dow + (dow === 0 ? -6 : 1);
+    const monday = new Date(today);
+    monday.setDate(diff);
+    monday.setHours(0, 0, 0, 0);
+
+    if (getWeekKey(monday) === currentWeekKey()) return; // already there
+
+    snapshotCurrentWeekToArchive();
+    state.currentWeekStart = monday;
+    const key = getWeekKey(monday);
+    if (hasArchiveEntry(key)) loadWeekFromArchive(key);
+    updateUI();
+    renderDayDetails();
+    document.getElementById('fastingMode').checked = state.fastingMode;
+    applyLockState();
+    saveToLocalStorage();
+}
+
 function navigateWeeks(deltaWeeks) {
     // Persist whatever is currently on screen under the current week key
     snapshotCurrentWeekToArchive();
