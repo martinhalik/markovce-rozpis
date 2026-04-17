@@ -47,12 +47,11 @@
                 <section class="control-section">
                     <h2>Základné informácie</h2>
                     <div class="form-group">
-                        <label>Týždeň:</label>
+                        <label class="week-label">Týždeň: <button class="today-link" onclick="jumpToThisWeek()">Dnes</button></label>
                         <div class="week-nav">
                             <button id="prevWeek" class="nav-btn">◀ Predošlý</button>
                             <span id="weekDisplay">--. --. – --. --.</span>
                             <button id="nextWeek" class="nav-btn">Nasledujúci ▶</button>
-                            <button class="today-link" onclick="jumpToThisWeek()">Dnes</button>
                         </div>
                         <div id="weekLockBanner" class="week-lock-banner" style="display:none">
                             <span class="week-lock-icon">🔒</span>

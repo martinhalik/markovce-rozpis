@@ -270,15 +270,10 @@ body {
 }
 
 /* Week Navigation */
-.week-nav {
+.week-label {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: var(--dark-bg);
-    padding: 10px;
-    border-radius: 12px;
-    border: 2px solid var(--border-color);
-    gap: 6px;
+    align-items: baseline;
+    gap: 8px;
 }
 
 .today-link {
@@ -288,22 +283,31 @@ body {
     font-size: 0.85rem;
     font-weight: 600;
     cursor: pointer;
-    padding: 4px 6px;
-    border-radius: 4px;
+    padding: 0;
     text-decoration: underline;
     text-underline-offset: 2px;
-    transition: color 0.15s ease, background 0.15s ease;
-    flex-shrink: 0;
+    transition: color 0.15s ease;
+    margin-left: auto;
 }
 
 .today-link:hover {
     color: var(--purple);
-    background: rgba(255, 255, 255, 0.06);
 }
 
 .today-link:focus-visible {
     outline: 2px solid var(--primary-blue);
     outline-offset: 2px;
+    border-radius: 2px;
+}
+
+.week-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--dark-bg);
+    padding: 10px;
+    border-radius: 12px;
+    border: 2px solid var(--border-color);
 }
 
 .nav-btn {
