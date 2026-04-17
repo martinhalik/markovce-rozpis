@@ -270,7 +270,7 @@ body {
 }
 
 /* Week Navigation */
-.week-label {
+label.week-label {
     display: flex;
     align-items: baseline;
     gap: 8px;
