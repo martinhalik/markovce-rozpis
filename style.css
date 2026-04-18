@@ -1849,6 +1849,74 @@ body.week-locked .fasting-mode-label {
     color: var(--text-light);
 }
 
+/* Ghost (placeholder) tile for a missing Great Feast icon. Dashed outline +
+   muted palette make it read as "not a real icon" at a glance. Click triggers
+   the upload input so the user can fill the slot without hunting for the
+   "Pridať ikonu" button. */
+.gallery-item-ghost {
+    background: rgba(255, 255, 255, 0.02);
+    border: 2px dashed rgba(255, 255, 255, 0.22);
+    color: var(--text-gray);
+}
+
+.gallery-item-ghost:hover {
+    border-color: var(--primary-blue);
+    background: rgba(65, 105, 225, 0.08);
+    color: var(--text-light);
+    transform: translateY(-2px);
+}
+
+.gallery-item-ghost-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 0;
+}
+
+.gallery-item-ghost-glyph {
+    font-size: 2rem;
+    font-weight: 300;
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.45);
+    transition: color 0.2s ease;
+}
+
+.gallery-item-ghost:hover .gallery-item-ghost-glyph {
+    color: var(--primary-blue);
+}
+
+.gallery-item-ghost-hint {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-gray);
+}
+
+.gallery-item-ghost-badge {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    padding: 2px 7px;
+    background: rgba(255, 71, 87, 0.85);
+    color: white;
+    font-size: 0.68rem;
+    font-weight: 800;
+    border-radius: 6px;
+    letter-spacing: 0.04em;
+    z-index: 1;
+    pointer-events: none;
+    text-transform: uppercase;
+}
+
+.gallery-item-ghost .gallery-item-name {
+    color: var(--text-gray);
+    background: transparent;
+}
+
 /* Type-grouped layout inside the "Všetky ikony" section */
 .gallery-type-group {
     margin-top: 18px;

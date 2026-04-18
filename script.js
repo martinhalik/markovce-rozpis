@@ -715,14 +715,28 @@ function renderAllIconsSection(icons, heading, renderItem) {
         // category); saints fall through to name when they share a date.
         const groupsHtml = CATEGORY_GROUP_ORDER
             .map(g => ({ ...g, items: groups.get(g.key) }))
-            .filter(g => g.items && g.items.length)
             .map(g => {
-                g.items.sort((a, b) => compareIconsByDate(a, b, referenceYear));
+                // For the 12 Great Feasts, surface ghost tiles for the ones we
+                // don't have an image for. This makes gaps obvious rather than
+                // invisible. Ghosts also participate in date sorting.
+                let ghosts = [];
+                if (g.key === 'great12') ghosts = missingGreatFeastGhosts(g.items);
+                const combined = [...g.items, ...ghosts]
+                    .sort((a, b) => compareIconsByDate(a, b, referenceYear));
+                return { ...g, items: combined, ghostCount: ghosts.length };
+            })
+            .filter(g => g.items.length)
+            .map(g => {
+                const total = g.key === 'great12' ? TWELVE_GREAT_FEAST_IDS.length : g.items.length;
+                const haveCount = g.items.length - (g.ghostCount || 0);
+                const countLabel = g.key === 'great12'
+                    ? `${haveCount} / ${total}`
+                    : String(g.items.length);
                 return `
                     <div class="gallery-type-group">
-                        <h4 class="gallery-type-heading">${escapeHtml(g.label)} <span class="gallery-type-count">${g.items.length}</span></h4>
+                        <h4 class="gallery-type-heading">${escapeHtml(g.label)} <span class="gallery-type-count">${escapeHtml(countLabel)}</span></h4>
                         <div class="gallery-grid-inner">
-                            ${g.items.map(img => renderItem(img)).join('')}
+                            ${g.items.map(img => img.ghost ? renderGhostItem(img, referenceYear) : renderItem(img)).join('')}
                         </div>
                     </div>
                 `;
@@ -756,23 +770,67 @@ function renderAllIconsSection(icons, heading, renderItem) {
 }
 
 // ── Icon categorization for "sort by type" ─────────────────────────────────
-// Classifies a gallery item by its `feasts[]` into one of six buckets shown
-// as group headers when the user sorts by type. First-match wins, so an icon
-// that covers both a Lord feast and a Theotokos feast (rare) lands under Lord.
+// Classifies a gallery item by its `feasts[]` into one of several buckets
+// shown as group headers when the user sorts by type. First-match wins, so
+// the 12 Great Feasts take precedence over the generic Lord/Theotokos groups.
+// That way the user sees the canonical set together at the top of the list.
+//
+// The 12 Great Feasts (excluding Pascha, which is the "Feast of feasts" on
+// its own), in liturgical-year order starting Sep 1:
+//   1. Nativity of the Theotokos (Sep 8)
+//   2. Exaltation of the Cross (Sep 14)
+//   3. Entry of the Theotokos (Nov 21)
+//   4. Nativity of Christ (Dec 25)
+//   5. Theophany (Jan 6)
+//   6. Meeting of the Lord (Feb 2)
+//   7. Annunciation (Mar 25)
+//   8. Palm Sunday (movable)
+//   9. Ascension (movable)
+//   10. Pentecost (movable)
+//   11. Transfiguration (Aug 6)
+//   12. Dormition of the Theotokos (Aug 15)
+const TWELVE_GREAT_FEAST_IDS = [
+    'nativity-theotokos', 'exaltation-cross', 'entry-theotokos',
+    'nativity', 'theophany', 'meeting-of-lord', 'annunciation',
+    'palm-sunday', 'ascension', 'pentecost', 'transfiguration', 'dormition'
+];
+const TWELVE_GREAT_FEAST_SET = new Set(TWELVE_GREAT_FEAST_IDS);
+
+// Slovak labels used for ghost placeholder tiles when a Great Feast has no
+// icon in the gallery yet. Kept in sync with orthodoxCalendar.FIXED / MOVABLE
+// but stored separately so we don't depend on load order.
+const GREAT_FEAST_LABELS = {
+    'nativity-theotokos':  'Narodenie Presv. Bohorodičky',
+    'exaltation-cross':    'Vozdviženie sv. Kríža',
+    'entry-theotokos':     'Vchod Presv. Bohorodičky do chrámu',
+    'nativity':            'Narodenie Pána (Vianoce)',
+    'theophany':           'Zjavenie Pána (Bohozjavenie)',
+    'meeting-of-lord':     'Stretnutie Pána',
+    'annunciation':        'Zvestovanie Presv. Bohorodičke',
+    'palm-sunday':         'Kvetná nedeľa (Vchod do Jeruzalema)',
+    'ascension':           'Nanebovstúpenie Pána',
+    'pentecost':           'Päťdesiatnica – Zoslanie Sv. Ducha',
+    'transfiguration':     'Premenenie Pána',
+    'dormition':           'Usnutie Presv. Bohorodičky'
+};
+
 const ICON_CATEGORIES = [
+    {
+        key: 'great12', label: '12 veľkých sviatkov',
+        // Matched first so a Great Feast icon doesn't end up under the generic
+        // Lord/Theotokos group.
+        feasts: TWELVE_GREAT_FEAST_SET
+    },
     {
         key: 'lord', label: 'Pán Boh',
         feasts: new Set([
-            'nativity', 'theophany', 'meeting-of-lord', 'palm-sunday', 'pascha',
-            'ascension', 'pentecost', 'transfiguration', 'exaltation-cross',
-            'mid-pentecost', 'holy-friday', 'holy-saturday'
+            'pascha', 'mid-pentecost', 'holy-friday', 'holy-saturday'
         ])
     },
     {
         key: 'theotokos', label: 'Presvätá Bohorodička',
         feasts: new Set([
-            'annunciation', 'dormition', 'nativity-theotokos',
-            'entry-theotokos', 'pokrov', 'synaxis-theotokos'
+            'pokrov', 'synaxis-theotokos'
         ])
     },
     {
@@ -808,8 +866,10 @@ function categoryForIcon(icon) {
 }
 
 // Ordering of type-groups when sorting by type. Display order mirrors the
-// liturgical-importance hierarchy.
+// liturgical-importance hierarchy, with the 12 Great Feasts on top so the
+// canonical set reads as a block.
 const CATEGORY_GROUP_ORDER = [
+    { key: 'great12',        label: '12 veľkých sviatkov' },
     { key: 'lord',           label: 'Pán Boh' },
     { key: 'theotokos',      label: 'Presvätá Bohorodička' },
     { key: 'triodion',       label: 'Triodion (obdobie pôstu)' },
@@ -817,6 +877,23 @@ const CATEGORY_GROUP_ORDER = [
     { key: 'saint',          label: 'Svätí' },
     { key: 'other',          label: 'Iné' }
 ];
+
+// Build ghost (placeholder) gallery tiles for Great Feasts that don't have an
+// icon file yet. Shown only in the type-grouped view, so the user can see the
+// missing entries at a glance and know where to drop images.
+function missingGreatFeastGhosts(presentIcons) {
+    const coveredFeasts = new Set();
+    presentIcons.forEach(img => (img.feasts || []).forEach(f => coveredFeasts.add(f)));
+    return TWELVE_GREAT_FEAST_IDS
+        .filter(id => !coveredFeasts.has(id))
+        .map(id => ({
+            ghost: true,
+            id: `__missing__${id}`,
+            feastId: id,
+            name: GREAT_FEAST_LABELS[id] || id,
+            feasts: [id]
+        }));
+}
 
 // Resolve the canonical "primary feast date" for an icon in the reference
 // year, used to order the date-sort. Uses the icon's first feast id; returns
@@ -845,6 +922,28 @@ function compareIconsByDate(a, b, referenceYear) {
 function formatSlovakDate(date) {
     if (!date) return '';
     return `${date.getDate()}.${date.getMonth() + 1}.`;
+}
+
+// Ghost tile for a missing Great Feast — dashed outline, question-mark glyph,
+// and the feast name. Clicking triggers the gallery upload input so the user
+// can immediately add the image.
+function renderGhostItem(img, referenceYear) {
+    const date = orthodoxCalendar.dateForFeast(img.feastId, referenceYear, state.calendarStyle);
+    const dateTag = date
+        ? `<div class="gallery-item-date" aria-hidden="true">${escapeHtml(formatSlovakDate(date))}</div>`
+        : '';
+    return `
+        <div class="gallery-item gallery-item-ghost" data-ghost-feast="${escapeHtml(img.feastId)}"
+             title="Chýbajúca ikona — kliknutím pridáte obrázok pre tento sviatok">
+            <div class="gallery-item-ghost-badge">Chýba</div>
+            ${dateTag}
+            <div class="gallery-item-ghost-body">
+                <span class="gallery-item-ghost-glyph" aria-hidden="true">＋</span>
+                <span class="gallery-item-ghost-hint">Pridať ikonu</span>
+            </div>
+            <div class="gallery-item-name">${escapeHtml(img.name)}</div>
+        </div>
+    `;
 }
 
 // Build the optional corner-pill with the feast date for a gallery tile.
@@ -1246,6 +1345,16 @@ function initializeEventListeners() {
                 if (state.currentGalleryId === id) state.currentGalleryId = null;
                 saveGallery();
                 renderGallery();
+                return;
+            }
+            // Clicking a ghost tile for a missing Great Feast triggers the
+            // gallery file picker so the user can add an image right away.
+            // Note we can't pre-seed the upload with the feast mapping — that
+            // still needs a manifest edit — but it shortcuts the first step.
+            const ghost = e.target.closest('.gallery-item-ghost');
+            if (ghost) {
+                const uploadInput = document.getElementById('galleryUpload');
+                if (uploadInput) uploadInput.click();
                 return;
             }
             const item = e.target.closest('.gallery-item');
