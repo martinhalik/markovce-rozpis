@@ -775,9 +775,9 @@ label.week-label {
 }
 
 .gallery-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-    gap: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
 }
 
 .gallery-empty {
@@ -1797,19 +1797,28 @@ body.week-locked .fasting-mode-label {
 }
 
 /* ── Gallery sections (Recommended + Všetky) ───────────────────────────── */
+/* Sections stack vertically with a horizontal rule between — a clear visual
+   break between "this week's recommendations" and the full library. */
 .gallery-section + .gallery-section {
     margin-top: 22px;
+    padding-top: 22px;
+    border-top: 1px solid var(--border-color);
 }
 
 .gallery-section-header {
-    margin-bottom: 12px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
 }
 
 .gallery-section-header h3 {
     font-size: 1rem;
     font-weight: 700;
     color: var(--primary-blue);
-    margin-bottom: 6px;
+    margin: 0;
 }
 
 .gallery-section-recommended .gallery-section-header h3 {
@@ -1821,10 +1830,19 @@ body.week-locked .fasting-mode-label {
     margin: 0;
     padding: 0;
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    flex-wrap: wrap;
+    gap: 4px 14px;
     color: var(--text-gray);
     font-size: 0.82rem;
+    flex: 1 1 auto;
+    justify-content: flex-end;
+}
+
+.gallery-week-feasts li {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }
 
 .gallery-week-feasts strong {
@@ -2003,6 +2021,19 @@ body.week-locked .fasting-mode-label {
 .image-editor-apply:hover {
     transform: translateY(-1px);
     box-shadow: 0 6px 20px rgba(65, 105, 225, 0.45);
+}
+
+/* Narrow phones: stack the recommended-section feast list under the heading
+   instead of fighting for space next to it. */
+@media (max-width: 560px) {
+    .gallery-section-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .gallery-week-feasts {
+        justify-content: flex-start;
+    }
 }
 
 /* Phone layout for the image editor: stack vertically */

@@ -615,12 +615,15 @@ function renderGallery() {
 
     let html = '';
     if (recommended.length) {
+        // Short Po/Ut/St/… day labels (matches the sidebar week-feasts panel)
+        // so the feast chips stay compact on one row next to the section header.
+        const dayLabels = {
+            monday: 'Po', tuesday: 'Ut', wednesday: 'St',
+            thursday: 'Št', friday: 'Pi', saturday: 'So', sunday: 'Ne'
+        };
         const feastListHtml = weekFeasts.slice(0, 4).map(f => {
-            const dayLabel = {
-                monday: 'Pondelok', tuesday: 'Utorok', wednesday: 'Streda',
-                thursday: 'Štvrtok', friday: 'Piatok', saturday: 'Sobota', sunday: 'Nedeľa'
-            }[f.day] || '';
-            return `<li><strong>${escapeHtml(dayLabel)}:</strong> ${escapeHtml(f.name)}</li>`;
+            const dLabel = dayLabels[f.day] || '';
+            return `<li><strong>${escapeHtml(dLabel)}</strong> ${escapeHtml(f.name)}</li>`;
         }).join('');
         html += `
             <div class="gallery-section gallery-section-recommended">
