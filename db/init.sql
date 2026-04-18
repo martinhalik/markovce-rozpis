@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS weeks (
+  week_key TEXT PRIMARY KEY,
+  payload JSONB NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_at BIGINT NOT NULL
+);
