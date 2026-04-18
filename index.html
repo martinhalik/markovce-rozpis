@@ -61,14 +61,34 @@
                         <small id="weekSavedHint">Zmeny sa ukladajú automaticky. Každý týždeň sa eviduje samostatne a zarátava do ročnej štatistiky liturgií. Týždne v minulosti sú automaticky uzamknuté.</small>
                     </div>
                     <div class="form-group">
+                        <label>Liturgický kalendár:</label>
+                        <div class="calendar-style-selector" role="radiogroup" aria-label="Liturgický kalendár">
+                            <label class="calendar-style-option">
+                                <input type="radio" name="calendarStyle" value="antiochian" checked>
+                                <span class="calendar-style-label">
+                                    <strong>Nový</strong>
+                                    <small>Antiochijský · pevné sviatky po Gregoriánskom kalendári</small>
+                                </span>
+                            </label>
+                            <label class="calendar-style-option">
+                                <input type="radio" name="calendarStyle" value="julian">
+                                <span class="calendar-style-label">
+                                    <strong>Starý</strong>
+                                    <small>Juliánsky · pevné sviatky posunuté o 13 dní</small>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
                         <label>Ikona:</label>
                         <div class="icon-controls">
                             <label for="iconUpload" class="icon-upload-btn">📁 Nahrať ikonu</label>
                             <input type="file" id="iconUpload" accept="image/*" style="display:none">
                             <button class="icon-gallery-btn" onclick="openGallery()">🖼️ Galéria ikon</button>
                         </div>
-                        <small>Odporúčaný formát: štvorcový obrázok</small>
+                        <small>Odporúčaný formát: štvorcový obrázok. Ikona sa automaticky predvolí podľa sviatku týždňa — môžete ju kedykoľvek zmeniť.</small>
                     </div>
+                    <div id="weekFeastHints" class="week-feast-hints"></div>
                     <div class="form-group">
                         <label class="fasting-mode-label">
                             <input type="checkbox" id="fastingMode">
@@ -151,7 +171,13 @@
 
             <!-- Right side - Preview -->
             <div class="preview-panel" id="previewPanel">
-                <h2>Náhľad</h2>
+                <div class="preview-header">
+                    <h2>Náhľad</h2>
+                    <button type="button" id="openImageEditorBtn" class="preview-edit-btn" aria-label="Upraviť ikonu">
+                        <span aria-hidden="true">✂️</span>
+                        <span class="preview-edit-btn-label">Upraviť ikonu</span>
+                    </button>
+                </div>
                 <div class="preview-container">
                     <canvas id="previewCanvas" width="400" height="400"></canvas>
                 </div>
@@ -188,11 +214,56 @@
                 <button class="gallery-close-btn" onclick="closeGallery()">✕</button>
             </div>
             <div class="gallery-modal-body">
-                <div class="gallery-upload-area">
-                    <label for="galleryUpload" class="gallery-add-btn">+ Pridať ikonu do galérie</label>
-                    <input type="file" id="galleryUpload" accept="image/*" style="display:none">
+                <div class="gallery-toolbar">
+                    <label for="gallerySearch" class="gallery-search-label">
+                        <span class="gallery-search-icon" aria-hidden="true">🔍</span>
+                        <input type="search" id="gallerySearch" placeholder="Hľadať ikonu (názov, sviatok)…"
+                               autocomplete="off" aria-label="Hľadať ikonu">
+                    </label>
+                    <label for="gallerySort" class="gallery-sort-label">
+                        <span class="gallery-sort-icon" aria-hidden="true">↕</span>
+                        <select id="gallerySort" aria-label="Zoradiť ikony">
+                            <option value="name">Podľa názvu</option>
+                            <option value="date">Podľa dátumu sviatku</option>
+                            <option value="type">Podľa typu</option>
+                        </select>
+                    </label>
+                    <div class="gallery-upload-area">
+                        <label for="galleryUpload" class="gallery-add-btn">+ Pridať ikonu</label>
+                        <input type="file" id="galleryUpload" accept="image/*" style="display:none">
+                    </div>
                 </div>
                 <div id="galleryGrid" class="gallery-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Editor Modal: scale + crop -->
+    <div id="imageEditorModal" class="gallery-modal" style="display:none">
+        <div class="gallery-modal-content image-editor-modal-content">
+            <div class="gallery-modal-header">
+                <h2>✂️ Upraviť ikonu</h2>
+                <button class="gallery-close-btn" onclick="closeImageEditor()">✕</button>
+            </div>
+            <div class="gallery-modal-body image-editor-body">
+                <div class="image-editor-preview-wrap">
+                    <canvas id="imageEditorCanvas" width="480" height="600" aria-label="Náhľad úprav ikony"></canvas>
+                    <p class="image-editor-hint">Potiahnutím posuniete obrázok. Jazdcom upravte veľkosť.</p>
+                </div>
+                <div class="image-editor-controls">
+                    <label class="image-editor-control">
+                        <span class="image-editor-control-label">
+                            Veľkosť (priblíženie)
+                            <span id="imageEditorScaleValue">100%</span>
+                        </span>
+                        <input type="range" id="imageEditorScale" min="0.5" max="3" step="0.01" value="1">
+                    </label>
+                    <div class="image-editor-actions">
+                        <button type="button" class="image-editor-reset" onclick="imageEditorReset()">Obnoviť</button>
+                        <button type="button" class="image-editor-cancel" onclick="closeImageEditor()">Zrušiť</button>
+                        <button type="button" class="image-editor-apply" onclick="imageEditorApply()">Použiť</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -202,6 +273,13 @@
         <span class="saved-toast-icon">✓</span>
         <span class="saved-toast-text">Uložené</span>
     </div>
+
+    <footer class="site-footer">
+        <p>
+            Ikony svätých a sviatkov: <a href="https://azbyka.ru/days/" target="_blank" rel="noopener noreferrer">azbyka.ru</a>.
+            Farnosť Markovce · Pravoslávna cirkev.
+        </p>
+    </footer>
 
     <script src="script.js"></script>
 </body>
