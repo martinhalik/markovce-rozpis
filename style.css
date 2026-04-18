@@ -1887,6 +1887,27 @@ body.week-locked .fasting-mode-label {
     white-space: nowrap;
 }
 
+/* Feast date tag — small "D.M." pill in the top-right corner of the tile.
+   Placed opposite the ★ recommended badge so the two never collide. */
+.gallery-item-date {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    padding: 2px 7px;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    font-size: 0.72rem;
+    font-weight: 700;
+    border-radius: 6px;
+    letter-spacing: 0.02em;
+    z-index: 1;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+}
+
 /* On small gallery tiles (phones / tight modal) the "★ Odporúčané" label
    eats too much of the image — shrink to the star only. The class still
    reads correctly for screen readers because we keep the text content. */

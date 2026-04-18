@@ -211,12 +211,28 @@ const orthodoxCalendar = (function () {
         return map;
     }
 
+    // Return the civil-calendar Date in `year` on which `feastId` falls under
+    // the given calendar style. Works for both movable and fixed feasts. Returns
+    // null if the id isn't known — callers should skip the date overlay then.
+    function dateForFeast(feastId, year, calendarStyle) {
+        const movable = MOVABLE.find(f => f.id === feastId);
+        if (movable) {
+            return addDays(computePascha(year), movable.offset);
+        }
+        const fixed = FIXED.find(f => f.id === feastId);
+        if (fixed) {
+            return civilDateForFixed(year, fixed.month, fixed.day, calendarStyle);
+        }
+        return null;
+    }
+
     return {
         computePascha,
         feastsOnDate,
         feastsForWeek,
         primaryFeast,
         feastRank,
+        dateForFeast,
         MAJOR_MOVABLE,
         TWELVE_GREAT_FIXED,
         MOVABLE,
@@ -591,6 +607,13 @@ function renderGallery() {
     // literal, which escapeHtml only partially guarantees. Instead, render a
     // data-icon-id attribute and handle clicks via delegation (bound once in
     // initializeEventListeners).
+    // Reference year for date resolution — use the currently-displayed week's
+    // year so switching to December 2025 and opening the gallery shows feasts
+    // dated 2025, not whatever 'today' happens to be.
+    const referenceYear = state.currentWeekStart
+        ? state.currentWeekStart.getFullYear()
+        : new Date().getFullYear();
+
     const renderItem = (img, { recommendedFor } = {}) => {
         const safeName = escapeHtml(img.name);
         const safeId = escapeHtml(img.id);
@@ -600,10 +623,16 @@ function renderGallery() {
         const recommendedBadge = recommendedFor && recommendedFor.length
             ? `<div class="gallery-item-badge" title="${escapeHtml(recommendedFor.map(f => f.name).join(' · '))}">★ Odporúčané</div>`
             : '';
+        // Small "D.M." tag in the corner showing when this feast falls in the
+        // current reference year under the active calendar style. Recommended
+        // items get the exact date of the matched feast in *this* week; everyone
+        // else gets the date of the icon's first feast.
+        const dateTag = buildIconDateTag(img, recommendedFor, referenceYear);
         return `
             <div class="gallery-item${state.currentGalleryId === img.id ? ' selected' : ''}${recommendedFor ? ' recommended' : ''}"
                  data-icon-id="${safeId}"${title}>
                 ${recommendedBadge}
+                ${dateTag}
                 <img src="${safeSrc}" alt="${safeName}" loading="lazy">
                 <div class="gallery-item-name">${safeName}</div>
                 ${img.type === 'uploaded'
@@ -658,6 +687,29 @@ function renderGallery() {
 function onGallerySearchInput(value) {
     gallerySearch = value || '';
     renderGallery();
+}
+
+// Slovak short date format: "7.4." — day.month. (with trailing period).
+function formatSlovakDate(date) {
+    if (!date) return '';
+    return `${date.getDate()}.${date.getMonth() + 1}.`;
+}
+
+// Build the optional corner-pill with the feast date for a gallery tile.
+// Returns empty string if the icon has no resolvable feast date.
+function buildIconDateTag(img, recommendedFor, referenceYear) {
+    if (!Array.isArray(img.feasts) || !img.feasts.length) return '';
+    // Prefer the feast that matched this week's recommendation so the date
+    // reads as "the day it lands on this week" rather than the generic
+    // first-entry date — relevant for icons that cover multiple feasts.
+    let feastId = img.feasts[0];
+    if (recommendedFor && recommendedFor.length) {
+        const match = recommendedFor.find(f => img.feasts.includes(f.id));
+        if (match) feastId = match.id;
+    }
+    const date = orthodoxCalendar.dateForFeast(feastId, referenceYear, state.calendarStyle);
+    if (!date) return '';
+    return `<div class="gallery-item-date" aria-hidden="true">${escapeHtml(formatSlovakDate(date))}</div>`;
 }
 
 function selectFromGallery(id) {
