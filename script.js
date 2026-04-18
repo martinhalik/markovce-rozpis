@@ -4,7 +4,15 @@
 // affects fixed-date feasts: Antiochian uses Gregorian civil dates, Julian uses
 // Julian civil dates — 13 days behind Gregorian in the 20th–21st century.
 const orthodoxCalendar = (function () {
-    const JULIAN_OFFSET_DAYS = 13; // valid 1900-03-01 through 2100-02-28
+    // Days to add to a Julian-calendar date to get the same day on the Gregorian
+    // civil calendar. Depends on the century: 13 from 1900-03-01 to 2100-02-28,
+    // 14 from 2100-03-01 to 2200-02-28, etc. Formula: floor(y/100) - floor(y/400) - 2.
+    // Note: exact around the Feb 28 / Mar 1 boundary we approximate using the
+    // year of the given date — good enough for liturgical feast mapping, where
+    // Pascha is always April-ish and fixed-feast shifts are year-stable.
+    function julianOffsetDays(year) {
+        return Math.floor(year / 100) - Math.floor(year / 400) - 2;
+    }
 
     // Meeus' algorithm for Julian (Orthodox) Pascha — returns a Gregorian Date
     // at local midnight for the given year.
@@ -16,9 +24,9 @@ const orthodoxCalendar = (function () {
         const e = (2 * a + 4 * b - d + 34) % 7;
         const month = Math.floor((d + e + 114) / 31); // 3 = March, 4 = April (Julian)
         const day = ((d + e + 114) % 31) + 1;
-        // Julian calendar → Gregorian: add 13 days (for current era)
+        // Julian calendar → Gregorian: add century-dependent offset.
         const julianDate = new Date(year, month - 1, day);
-        julianDate.setDate(julianDate.getDate() + JULIAN_OFFSET_DAYS);
+        julianDate.setDate(julianDate.getDate() + julianOffsetDays(year));
         julianDate.setHours(0, 0, 0, 0);
         return julianDate;
     }
@@ -120,7 +128,7 @@ const orthodoxCalendar = (function () {
     // currently-active liturgical calendar. Julian adds 13 days.
     function civilDateForFixed(year, feastMonth, feastDay, calendarStyle) {
         const d = new Date(year, feastMonth - 1, feastDay);
-        if (calendarStyle === 'julian') d.setDate(d.getDate() + JULIAN_OFFSET_DAYS);
+        if (calendarStyle === 'julian') d.setDate(d.getDate() + julianOffsetDays(year));
         d.setHours(0, 0, 0, 0);
         return d;
     }
@@ -249,6 +257,13 @@ const state = {
         saturday: '',
         sunday: ''
     },
+    // Per-day flag: did the last auto-fill put this feast name there? Cleared
+    // as soon as the user types in the feast input, so user edits are never
+    // overwritten by subsequent auto-fills (week change, calendar-style change).
+    autoFilledFeasts: {
+        monday: false, tuesday: false, wednesday: false, thursday: false,
+        friday: false, saturday: false, sunday: false
+    },
     dayTypes: {
         monday: 'non-fasting',
         tuesday: 'non-fasting',
@@ -297,6 +312,7 @@ function snapshotCurrentWeekToArchive() {
     state.archive[key] = {
         events: JSON.parse(JSON.stringify(state.events)),
         feasts: { ...state.feasts },
+        autoFilledFeasts: { ...state.autoFilledFeasts },
         dayTypes: { ...state.dayTypes },
         fastingMode: state.fastingMode,
         // Icon selection is per-week so every week can show its own feast icon
@@ -320,6 +336,8 @@ function loadWeekFromArchive(weekKey) {
     const defaultTypes = { monday: 'non-fasting', tuesday: 'non-fasting', wednesday: 'fasting', thursday: 'non-fasting', friday: 'fasting', saturday: 'non-fasting', sunday: 'celebration' };
     state.events = { ...emptyEvents, ...JSON.parse(JSON.stringify(entry.events || {})) };
     state.feasts = { ...emptyFeasts, ...(entry.feasts || {}) };
+    const emptyAuto = { monday: false, tuesday: false, wednesday: false, thursday: false, friday: false, saturday: false, sunday: false };
+    state.autoFilledFeasts = { ...emptyAuto, ...(entry.autoFilledFeasts || {}) };
     state.dayTypes = { ...defaultTypes, ...(entry.dayTypes || {}) };
     state.fastingMode = !!entry.fastingMode;
     state.iconManual = !!entry.iconManual;
@@ -444,31 +462,52 @@ function primaryWeekFeast() {
     return best ? { ...best, day: bestDay, date: byDay[bestDay].date } : null;
 }
 
-// Apply an auto-preselection for the current week if the user hasn't chosen
-// manually. Looks up the primary feast and the first matching icon, and also
-// auto-fills empty `feasts[day]` entries with feast names as a convenience.
-function applyAutoIconPreselection({ force = false } = {}) {
+// Auto-fill empty (or previously auto-filled) feast names for the current
+// week based on the active calendar. User-edited names (flag cleared in the
+// feast input handler) are NEVER overwritten. A day is treated as "empty" for
+// this purpose when it's literally blank OR was auto-filled last time — so
+// switching calendar or week replaces the stale auto name with the new one.
+function autofillFeastNames() {
     if (!state.currentWeekStart) return;
-    if (state.iconManual && !force) return;
-
-    // Auto-fill feast names for any day that has a feast and an empty user entry.
-    // User-typed feast names are never overwritten.
     const byDay = orthodoxCalendar.feastsForWeek(state.currentWeekStart, state.calendarStyle);
     ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].forEach(day => {
         const entry = byDay[day];
-        if (!entry || !entry.primary) return;
-        if (!state.feasts[day]) {
+        const current = state.feasts[day];
+        const wasAuto = !!state.autoFilledFeasts[day];
+        // If the user typed something, leave it alone.
+        if (current && !wasAuto) return;
+        if (entry && entry.primary) {
             state.feasts[day] = entry.primary.name;
+            state.autoFilledFeasts[day] = true;
+        } else if (wasAuto) {
+            // Previously auto-filled but the new calendar/week has no feast
+            // for this day — clear the stale auto text instead of stranding it.
+            state.feasts[day] = '';
+            state.autoFilledFeasts[day] = false;
         }
     });
+}
 
+// Pick and load an icon for the primary feast of the week, unless the user
+// already picked one manually (iconManual). `force` bypasses the manual flag
+// for explicit "re-recommend" intents.
+function autoPickWeekIcon({ force = false } = {}) {
+    if (!state.currentWeekStart) return;
+    if (state.iconManual && !force) return;
     const primary = primaryWeekFeast();
     if (!primary) return;
     const icons = iconsForFeast(primary.id);
     if (!icons.length) return;
     const chosen = icons[0];
-    if (state.currentGalleryId === chosen.id && state.iconImage) return; // already applied
+    if (state.currentGalleryId === chosen.id && state.iconImage) return;
     loadIconById(chosen.id);
+}
+
+// Combined entry point — autofill text + pick icon. Kept as one function for
+// call-site ergonomics; callers that only need one can use the split helpers.
+function applyAutoIconPreselection({ force = false } = {}) {
+    autofillFeastNames();
+    autoPickWeekIcon({ force });
 }
 
 function saveGallery() {
@@ -529,13 +568,14 @@ function renderGallery() {
         });
     });
 
-    // Apply text filter. Matches against name, description, and feast IDs.
-    const q = gallerySearch.trim().toLowerCase();
+    // Apply text filter. Diacritic-insensitive so "post" matches "pôst" and
+    // "juraj" matches "Juraj". Matches against name, description, and feast IDs.
+    const q = foldText(gallerySearch);
     const matches = (img) => {
         if (!q) return true;
-        if (img.name && img.name.toLowerCase().includes(q)) return true;
-        if (img.description && img.description.toLowerCase().includes(q)) return true;
-        if (Array.isArray(img.feasts) && img.feasts.some(f => f.toLowerCase().includes(q))) return true;
+        if (img.name && foldText(img.name).includes(q)) return true;
+        if (img.description && foldText(img.description).includes(q)) return true;
+        if (Array.isArray(img.feasts) && img.feasts.some(f => foldText(f).includes(q))) return true;
         return false;
     };
 
@@ -546,6 +586,11 @@ function renderGallery() {
     const recIdSet = new Set(recommended.map(i => i.id));
     const others = galleryImages.filter(img => !recIdSet.has(img.id)).filter(matches);
 
+    // We render via innerHTML for simplicity but avoid inline onclick(id) —
+    // the id would need to be safely embeddable inside a single-quoted string
+    // literal, which escapeHtml only partially guarantees. Instead, render a
+    // data-icon-id attribute and handle clicks via delegation (bound once in
+    // initializeEventListeners).
     const renderItem = (img, { recommendedFor } = {}) => {
         const safeName = escapeHtml(img.name);
         const safeId = escapeHtml(img.id);
@@ -557,12 +602,12 @@ function renderGallery() {
             : '';
         return `
             <div class="gallery-item${state.currentGalleryId === img.id ? ' selected' : ''}${recommendedFor ? ' recommended' : ''}"
-                 onclick="selectFromGallery('${safeId}')"${title}>
+                 data-icon-id="${safeId}"${title}>
                 ${recommendedBadge}
                 <img src="${safeSrc}" alt="${safeName}" loading="lazy">
                 <div class="gallery-item-name">${safeName}</div>
                 ${img.type === 'uploaded'
-                    ? `<button class="gallery-item-delete" onclick="deleteFromGallery(event,'${safeId}')">✕</button>`
+                    ? `<button class="gallery-item-delete" data-icon-id="${safeId}" aria-label="Zmazať ikonu">✕</button>`
                     : ''}
             </div>
         `;
@@ -626,36 +671,69 @@ function selectFromGallery(id) {
         state._iconDataUrl = item.src; // cache so we don't re-encode on every save
         updatePreview();
         saveToLocalStorage();
+        refreshEditIconBtnState();
+    };
+    img.onerror = () => {
+        // Decode failed — undo the selection rather than leaving half-applied
+        // state behind.
+        state.currentGalleryId = null;
+        alert('Nepodarilo sa načítať ikonu.');
+        refreshEditIconBtnState();
     };
     img.src = item.src;
     closeGallery();
 }
 
 // Load an icon by id without touching iconManual. Used when restoring a week's
-// archived icon or applying an auto-preselection.
+// archived icon or applying an auto-preselection. Returns true only if a matching
+// gallery item was found; the actual image decode is async (and may still fail —
+// onerror clears the partial state).
 function loadIconById(id) {
     const item = galleryImages.find(i => i.id === id);
-    if (!item) return false;
+    if (!item) {
+        // Referenced id no longer exists (e.g. the user deleted their uploaded
+        // icon). Clear any stale selection so the preview doesn't keep the old
+        // icon around.
+        state.currentGalleryId = null;
+        state.iconImage = null;
+        state._iconDataUrl = null;
+        updatePreview();
+        refreshEditIconBtnState();
+        return false;
+    }
     state.currentGalleryId = id;
     const img = new Image();
     img.onload = () => {
         state.iconImage = img;
         state._iconDataUrl = item.src;
         updatePreview();
+        refreshEditIconBtnState();
+    };
+    img.onerror = () => {
+        state.currentGalleryId = null;
+        state.iconImage = null;
+        state._iconDataUrl = null;
+        updatePreview();
+        refreshEditIconBtnState();
     };
     img.src = item.src;
     return true;
 }
 
-function deleteFromGallery(event, id) {
-    event.stopPropagation();
-    galleryImages = galleryImages.filter(i => i.id !== id);
-    if (state.currentGalleryId === id) {
-        state.currentGalleryId = null;
-    }
-    saveGallery();
-    renderGallery();
+// Enable/disable the "Upraviť ikonu" button based on whether an icon is loaded.
+// Called from every path that changes state.iconImage so the UI stays in sync
+// without relying on a reactive framework.
+function refreshEditIconBtnState() {
+    const btn = document.getElementById('openImageEditorBtn');
+    if (!btn) return;
+    const disabled = !state.iconImage;
+    btn.disabled = disabled;
+    btn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+    btn.title = disabled ? 'Najprv vyberte alebo nahrajte ikonu' : 'Upraviť ikonu';
 }
+
+// Gallery item deletion is handled by the delegated click listener in
+// initializeEventListeners — see the '.gallery-item-delete' branch there.
 // ───────────────────────────────────────────────────────────────────────────
 
 // LocalStorage functions
@@ -723,8 +801,13 @@ function loadFromLocalStorage() {
         // the legacy top-level fields (so existing users don't lose their in-progress week),
         // and migrate that into the archive.
         const key = state.currentWeekStart ? getWeekKey(state.currentWeekStart) : null;
+        let archiveOwnsIcon = false;
         if (key && hasArchiveEntry(key)) {
             loadWeekFromArchive(key);
+            // If the archive had an iconGalleryId, loadIconById already kicked off
+            // a load; skip the legacy `iconImageData` restore so its async onload
+            // doesn't race and overwrite the per-week icon.
+            archiveOwnsIcon = !!state.archive[key].iconGalleryId;
         } else {
             state.events = parsed.events || state.events;
             state.feasts = parsed.feasts || state.feasts;
@@ -736,19 +819,21 @@ function loadFromLocalStorage() {
             }
         }
 
-        // Restore icon image
-        if (parsed.iconImageData) {
+        // Restore icon image (legacy path — only if nothing from archive took it)
+        if (parsed.iconImageData && !archiveOwnsIcon) {
             const img = new Image();
             img.onload = () => {
                 state.iconImage = img;
                 state._iconDataUrl = parsed.iconImageData;
                 updatePreview();
+                refreshEditIconBtnState();
             };
+            img.onerror = () => { /* corrupt data URL — leave icon empty */ };
             img.src = parsed.iconImageData;
         }
 
         // Restore selected-gallery highlight so the user sees which icon they picked
-        if (parsed.currentGalleryId) {
+        if (parsed.currentGalleryId && !archiveOwnsIcon) {
             state.currentGalleryId = parsed.currentGalleryId;
         }
 
@@ -836,8 +921,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     snapshotCurrentWeekToArchive();
 
     updateUI();
+    // renderDayDetails has to run after autofill so the feast input for the
+    // currently-selected day reflects the auto-filled name.
+    renderDayDetails();
     applyLockState();
     renderWeekFeastHints();
+    refreshEditIconBtnState();
 
     // From this point onward, persisted edits trigger the "Uložené" toast.
     // (Suppressed during bootstrap so initial state restore doesn't flash it.)
@@ -876,6 +965,9 @@ function initializeEventListeners() {
     document.getElementById('dayFeastName').addEventListener('input', (e) => {
         if (!guardEditable()) { e.target.value = state.feasts[state.currentDay] || ''; return; }
         state.feasts[state.currentDay] = e.target.value;
+        // Any user edit transitions the field to "manual" — subsequent calendar
+        // or week changes must not overwrite it.
+        state.autoFilledFeasts[state.currentDay] = false;
         updatePreview();
         saveToLocalStorage();
     });
@@ -914,11 +1006,11 @@ function initializeEventListeners() {
             const val = e.target.value === 'julian' ? 'julian' : 'antiochian';
             if (val === state.calendarStyle) return;
             state.calendarStyle = val;
-            // Clear auto-generated feast names so the new calendar's feasts take
-            // over. User-edited names (marked manual) would be respected, but the
-            // current model auto-fills only blanks — so we only clear blanks... which
-            // means we just re-run auto-fill: leave any currently-typed text alone.
-            applyAutoIconPreselection();
+            // autofillFeastNames replaces previously-auto-filled names with the
+            // new calendar's feast (or clears if no longer a feast); user-typed
+            // names are preserved via the autoFilledFeasts flag.
+            autofillFeastNames();
+            autoPickWeekIcon();
             renderDayDetails();
             updatePreview();
             renderWeekFeastHints();
@@ -929,6 +1021,30 @@ function initializeEventListeners() {
     // Gallery search
     const gsearch = document.getElementById('gallerySearch');
     if (gsearch) gsearch.addEventListener('input', (e) => onGallerySearchInput(e.target.value));
+
+    // Delegated click handling on the gallery grid: item click → select, delete
+    // button click → remove. Avoids inline onclick(id) that would be fragile
+    // against quotes/apostrophes in ids (defense in depth, even though ids are
+    // machine-generated).
+    const galleryGrid = document.getElementById('galleryGrid');
+    if (galleryGrid) {
+        galleryGrid.addEventListener('click', (e) => {
+            const deleteBtn = e.target.closest('.gallery-item-delete');
+            if (deleteBtn && deleteBtn.dataset.iconId) {
+                e.stopPropagation();
+                const id = deleteBtn.dataset.iconId;
+                galleryImages = galleryImages.filter(i => i.id !== id);
+                if (state.currentGalleryId === id) state.currentGalleryId = null;
+                saveGallery();
+                renderGallery();
+                return;
+            }
+            const item = e.target.closest('.gallery-item');
+            if (item && item.dataset.iconId) {
+                selectFromGallery(item.dataset.iconId);
+            }
+        });
+    }
 
     // Image editor: open via button over the preview on every viewport.
     const editBtn = document.getElementById('openImageEditorBtn');
@@ -1008,8 +1124,16 @@ function jumpToThisWeek() {
     // reload iconManual/iconTransform from disk.
     state.iconManual = false;
     state.iconTransform = { scale: 1, offsetX: 0, offsetY: 0 };
+    state.currentGalleryId = null;
+    state.iconImage = null;
+    state._iconDataUrl = null;
     const key = getWeekKey(monday);
-    if (hasArchiveEntry(key)) loadWeekFromArchive(key);
+    if (hasArchiveEntry(key)) {
+        loadWeekFromArchive(key);
+    } else {
+        // Clear last week's auto-filled feasts so they don't leak into today's.
+        clearAutoFilledFeasts();
+    }
     applyAutoIconPreselection();
     updateUI();
     renderDayDetails();
@@ -1042,9 +1166,12 @@ function navigateWeeks(deltaWeeks) {
             // Past week with no archive — show empty so we don't pretend the
             // current-week program was actually used that week.
             resetCurrentWeekToEmpty();
+        } else {
+            // Future / current week with no archive: keep events (as a template)
+            // but clear feast names that were auto-filled for the *previous* week
+            // so they don't leak into the new week. User-typed names survive.
+            clearAutoFilledFeasts();
         }
-        // Otherwise (future / current week with no archive): keep events/feasts
-        // as a template; only icon gets reset. Auto-preselection below will run.
     }
 
     applyAutoIconPreselection();
@@ -1059,6 +1186,19 @@ function navigateWeeks(deltaWeeks) {
 function resetCurrentWeekToEmpty() {
     state.events = { monday: [], tuesday: [], wednesday: [], thursday: [], friday: [], saturday: [], sunday: [] };
     state.feasts = { monday: '', tuesday: '', wednesday: '', thursday: '', friday: '', saturday: '', sunday: '' };
+    state.autoFilledFeasts = { monday: false, tuesday: false, wednesday: false, thursday: false, friday: false, saturday: false, sunday: false };
+}
+
+// Clear only feasts that were auto-filled (per autoFilledFeasts). Leaves user
+// edits alone. Used on fresh-week navigation so last week's auto names don't
+// bleed into this week.
+function clearAutoFilledFeasts() {
+    ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].forEach(day => {
+        if (state.autoFilledFeasts[day]) {
+            state.feasts[day] = '';
+            state.autoFilledFeasts[day] = false;
+        }
+    });
 }
 
 function updateUI() {
@@ -1087,6 +1227,12 @@ function handleIconUpload(e) {
             state._iconDataUrl = src; // cache so we don't re-encode on every save
             updatePreview();
             saveToLocalStorage();
+            refreshEditIconBtnState();
+        };
+        img.onerror = () => {
+            state.currentGalleryId = null;
+            alert('Nepodarilo sa načítať nahraný súbor.');
+            refreshEditIconBtnState();
         };
         img.src = src;
     };
@@ -1889,6 +2035,10 @@ function jumpToWeek(weekKey) {
     } else {
         state.iconManual = false;
         state.iconTransform = { scale: 1, offsetX: 0, offsetY: 0 };
+        state.currentGalleryId = null;
+        state.iconImage = null;
+        state._iconDataUrl = null;
+        clearAutoFilledFeasts();
     }
     applyAutoIconPreselection();
     saveToLocalStorage();
@@ -1907,6 +2057,15 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+// Lower-case + strip combining diacritic marks so text search can match across
+// Slovak/Russian transliterations ("pôst" ↔ "post", "Ján" ↔ "jan").
+function foldText(str) {
+    return String(str || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
 }
 
 function renderStats() {
@@ -2130,12 +2289,16 @@ function initializeImageEditor() {
     if (scaleInput) {
         scaleInput.addEventListener('input', (e) => {
             imageEditor.draftScale = Number(e.target.value);
+            // Shrinking the image can leave the stored offset past the new
+            // max-offset range — re-clamp so the view doesn't jump at apply.
+            clampOffsetsToScale();
             updateScaleLabel();
             renderImageEditor();
         });
     }
 
-    // Drag to pan
+    // Drag to pan. Offsets are clamped based on current scale so the image can
+    // never be panned entirely outside the clip region (see clampOffsetsToScale).
     const onDown = (clientX, clientY) => {
         imageEditor.dragging = true;
         imageEditor.dragStartX = clientX;
@@ -2146,12 +2309,11 @@ function initializeImageEditor() {
     const onMove = (clientX, clientY) => {
         if (!imageEditor.dragging) return;
         const rect = canvas.getBoundingClientRect();
-        // Convert pixel delta to fraction of icon region (offsets are stored as
-        // fractions so preview ↔ export scale identically).
         const dxFrac = (clientX - imageEditor.dragStartX) / rect.width;
         const dyFrac = (clientY - imageEditor.dragStartY) / rect.height;
-        imageEditor.draftOffsetX = clamp(imageEditor.dragStartOffsetX + dxFrac, -1, 1);
-        imageEditor.draftOffsetY = clamp(imageEditor.dragStartOffsetY + dyFrac, -1, 1);
+        imageEditor.draftOffsetX = imageEditor.dragStartOffsetX + dxFrac;
+        imageEditor.draftOffsetY = imageEditor.dragStartOffsetY + dyFrac;
+        clampOffsetsToScale();
         renderImageEditor();
     };
     const onUp = () => { imageEditor.dragging = false; };
@@ -2159,20 +2321,46 @@ function initializeImageEditor() {
     canvas.addEventListener('mousedown', (e) => { e.preventDefault(); onDown(e.clientX, e.clientY); });
     window.addEventListener('mousemove', (e) => onMove(e.clientX, e.clientY));
     window.addEventListener('mouseup', onUp);
+    // If focus leaves the window mid-drag (alt-tab, iframe focus) we'd never
+    // see mouseup — drop dragging state defensively.
+    window.addEventListener('blur', onUp);
+
     canvas.addEventListener('touchstart', (e) => {
         if (e.touches.length !== 1) return;
-        // preventDefault to stop the page scrolling while we pan.
+        // Prevent the default (scroll/zoom) only once a single-finger drag starts;
+        // otherwise multi-touch gestures / scrolls over the canvas are blocked
+        // unnecessarily on mobile.
         e.preventDefault();
         onDown(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: false });
     canvas.addEventListener('touchmove', (e) => {
-        if (e.touches.length !== 1) return;
+        // Only eat the event while we're actively dragging — otherwise let the
+        // browser scroll the modal body as usual.
+        if (!imageEditor.dragging || e.touches.length !== 1) return;
         e.preventDefault();
         onMove(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: false });
     canvas.addEventListener('touchend', onUp);
+    canvas.addEventListener('touchcancel', onUp);
 
     imageEditor.initialized = true;
+}
+
+// At scale s, an image fit to "cover" fills the clip region at s=1 and grows
+// beyond it for s>1. The offset range that keeps some of the image visible is
+// ±(s+1)/2 (pan by half the overflow in each direction, capped so one edge can
+// just touch the opposite clip edge). For s<1 (user zoomed out) the image is
+// smaller than the clip so we don't clamp below that lower bound.
+function clampOffsetsToScale() {
+    const s = imageEditor.draftScale;
+    // Offset unit is "fraction of icon region width/height". At scale s:
+    //   drawSize = baseSize * s (baseSize ≈ clip size in the smaller axis)
+    //   overflow (fraction of clip) ≈ (s - 1)/2 on each side if s > 1
+    //   we additionally allow up to ~0.5 of margin so user can shift
+    //   the visible crop substantially even when image is tight.
+    const maxOffset = Math.max(0.5, (s + 1) / 2);
+    imageEditor.draftOffsetX = clamp(imageEditor.draftOffsetX, -maxOffset, maxOffset);
+    imageEditor.draftOffsetY = clamp(imageEditor.draftOffsetY, -maxOffset, maxOffset);
 }
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
