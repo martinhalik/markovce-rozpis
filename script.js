@@ -1,9 +1,236 @@
+// ── Orthodox liturgical calendar ───────────────────────────────────────────
+// All Orthodox churches (Julian "starý" and Antiochian "nový") share the same
+// Paschalion (Pascha computed on the Julian calendar). The calendar style only
+// affects fixed-date feasts: Antiochian uses Gregorian civil dates, Julian uses
+// Julian civil dates — 13 days behind Gregorian in the 20th–21st century.
+const orthodoxCalendar = (function () {
+    const JULIAN_OFFSET_DAYS = 13; // valid 1900-03-01 through 2100-02-28
+
+    // Meeus' algorithm for Julian (Orthodox) Pascha — returns a Gregorian Date
+    // at local midnight for the given year.
+    function computePascha(year) {
+        const a = year % 4;
+        const b = year % 7;
+        const c = year % 19;
+        const d = (19 * c + 15) % 30;
+        const e = (2 * a + 4 * b - d + 34) % 7;
+        const month = Math.floor((d + e + 114) / 31); // 3 = March, 4 = April (Julian)
+        const day = ((d + e + 114) % 31) + 1;
+        // Julian calendar → Gregorian: add 13 days (for current era)
+        const julianDate = new Date(year, month - 1, day);
+        julianDate.setDate(julianDate.getDate() + JULIAN_OFFSET_DAYS);
+        julianDate.setHours(0, 0, 0, 0);
+        return julianDate;
+    }
+
+    function addDays(date, days) {
+        const d = new Date(date);
+        d.setDate(d.getDate() + days);
+        d.setHours(0, 0, 0, 0);
+        return d;
+    }
+
+    function sameDay(a, b) {
+        return a.getFullYear() === b.getFullYear()
+            && a.getMonth() === b.getMonth()
+            && a.getDate() === b.getDate();
+    }
+
+    // Movable feasts — offsets in days from Pascha. Negative = before Pascha.
+    // id → { offset, slovak name, class ('celebration'|'fasting'|'non-fasting'), feastId (for icon match) }
+    const MOVABLE = [
+        { id: 'sunday-publican-pharisee', offset: -70, name: 'Nedeľa o mýtnikovi a farizejovi', dayType: 'celebration' },
+        { id: 'sunday-prodigal-son',      offset: -63, name: 'Nedeľa o márnotratnom synovi',    dayType: 'celebration' },
+        { id: 'sunday-meatfare',          offset: -56, name: 'Mäsopôstna nedeľa (o poslednom súde)', dayType: 'celebration' },
+        { id: 'sunday-cheesefare',        offset: -49, name: 'Syropôstna nedeľa (odpustenia)',  dayType: 'celebration' },
+        { id: 'sunday-orthodoxy',         offset: -42, name: 'Nedeľa Pravoslávia',              dayType: 'celebration' },
+        { id: 'sunday-gregory-palamas',   offset: -35, name: 'Nedeľa sv. Gregora Palamu',       dayType: 'celebration' },
+        { id: 'sunday-cross',             offset: -28, name: 'Krestopoklonná nedeľa (Kríža)',   dayType: 'celebration' },
+        { id: 'sunday-john-climacus',     offset: -21, name: 'Nedeľa sv. Jána Klimaka',         dayType: 'celebration' },
+        { id: 'sunday-mary-egypt',        offset: -14, name: 'Nedeľa sv. Márie Egyptskej',      dayType: 'celebration' },
+        { id: 'lazarus-saturday',         offset:  -8, name: 'Lazárova sobota',                 dayType: 'celebration' },
+        { id: 'palm-sunday',              offset:  -7, name: 'Kvetná nedeľa (Vchod do Jeruzalema)', dayType: 'celebration' },
+        { id: 'holy-friday',              offset:  -2, name: 'Veľký piatok',                    dayType: 'fasting' },
+        { id: 'holy-saturday',            offset:  -1, name: 'Veľká sobota',                    dayType: 'celebration' },
+        { id: 'pascha',                   offset:   0, name: 'Pascha – Svetlé Kristovo Vzkriesenie', dayType: 'celebration' },
+        { id: 'thomas-sunday',            offset:   7, name: 'Tomášova nedeľa (Antipascha)',    dayType: 'celebration' },
+        { id: 'sunday-myrrhbearers',      offset:  14, name: 'Nedeľa myronosičiek',             dayType: 'celebration' },
+        { id: 'sunday-paralytic',         offset:  21, name: 'Nedeľa o uzdravení ochrnutého',   dayType: 'celebration' },
+        { id: 'mid-pentecost',            offset:  24, name: 'Prepolovenie Päťdesiatnice',      dayType: 'celebration' },
+        { id: 'sunday-samaritan',         offset:  28, name: 'Nedeľa o Samaritánke',            dayType: 'celebration' },
+        { id: 'sunday-blind-man',         offset:  35, name: 'Nedeľa o slepom',                 dayType: 'celebration' },
+        { id: 'ascension',                offset:  39, name: 'Nanebovstúpenie Pána',            dayType: 'celebration' },
+        { id: 'sunday-fathers-council',   offset:  42, name: 'Nedeľa sv. otcov I. snemu',       dayType: 'celebration' },
+        { id: 'pentecost',                offset:  49, name: 'Päťdesiatnica – Zoslanie Sv. Ducha', dayType: 'celebration' },
+        { id: 'sunday-all-saints',        offset:  56, name: 'Nedeľa všetkých svätých',         dayType: 'celebration' },
+        { id: 'sunday-russian-saints',    offset:  63, name: 'Nedeľa všetkých ruských svätých', dayType: 'celebration' }
+    ];
+
+    // Fixed-date feasts — month (1-12), day (1-31). `name` Slovak, `dayType` used
+    // to color the day. Civil date = liturgical date for Antiochian; +13 days for Julian.
+    const FIXED = [
+        { id: 'st-basil',              month:  1, day:  1, name: 'Sv. Bazil Veľký, Obrezanie Pána', dayType: 'celebration' },
+        { id: 'st-seraphim',           month:  1, day:  2, name: 'Sv. Serafim Sarovský',           dayType: 'non-fasting' },
+        { id: 'theophany',             month:  1, day:  6, name: 'Zjavenie Pána (Bohozjavenie)',   dayType: 'celebration' },
+        { id: 'synaxis-john-baptist',  month:  1, day:  7, name: 'Zbor sv. Jána Krstiteľa',        dayType: 'celebration' },
+        { id: 'three-hierarchs',       month:  1, day: 30, name: 'Traja svätí svätitelia',         dayType: 'celebration' },
+        { id: 'meeting-of-lord',       month:  2, day:  2, name: 'Stretnutie Pána (Hromnice)',     dayType: 'celebration' },
+        { id: 'st-john-chrysostom-jan',month:  1, day: 27, name: 'Prenesenie ostatkov sv. Jána Zlatoústeho', dayType: 'non-fasting' },
+        { id: 'annunciation',          month:  3, day: 25, name: 'Zvestovanie Presv. Bohorodičke', dayType: 'celebration' },
+        { id: 'st-george',             month:  4, day: 23, name: 'Sv. veľkomučeník Juraj',         dayType: 'celebration' },
+        { id: 'st-mark-evangelist',    month:  4, day: 25, name: 'Sv. apoštol a evanjelista Marek',dayType: 'non-fasting' },
+        { id: 'st-james-alphaeus',     month: 10, day:  9, name: 'Sv. apoštol Jakub, syn Alfejov', dayType: 'celebration' },
+        { id: 'ss-cyril-methodius',    month:  5, day: 11, name: 'Sv. Cyril a Metod',              dayType: 'celebration' },
+        { id: 'ss-constantine-helen',  month:  5, day: 21, name: 'Sv. Konštantín a Helena',        dayType: 'celebration' },
+        { id: 'st-john-theologian',    month:  5, day:  8, name: 'Sv. apoštol a evanjelista Ján Teológ', dayType: 'celebration' },
+        { id: 'ss-peter-paul',         month:  6, day: 29, name: 'Sv. vrchní apoštoli Peter a Pavol', dayType: 'celebration' },
+        { id: 'st-john-baptist-birth', month:  6, day: 24, name: 'Narodenie sv. Jána Krstiteľa',   dayType: 'celebration' },
+        { id: 'prophet-elijah',        month:  7, day: 20, name: 'Sv. prorok Eliáš',               dayType: 'celebration' },
+        { id: 'st-mary-magdalene',     month:  7, day: 22, name: 'Sv. Mária Magdaléna',            dayType: 'non-fasting' },
+        { id: 'st-panteleimon',        month:  7, day: 27, name: 'Sv. veľkomučeník Panteleimon',   dayType: 'non-fasting' },
+        { id: 'transfiguration',       month:  8, day:  6, name: 'Premenenie Pána',                dayType: 'celebration' },
+        { id: 'dormition',             month:  8, day: 15, name: 'Usnutie Presv. Bohorodičky',     dayType: 'celebration' },
+        { id: 'beheading-john-baptist',month:  8, day: 29, name: 'Sťatie hlavy sv. Jána Krstiteľa',dayType: 'fasting' },
+        { id: 'nativity-theotokos',    month:  9, day:  8, name: 'Narodenie Presv. Bohorodičky',   dayType: 'celebration' },
+        { id: 'exaltation-cross',      month:  9, day: 14, name: 'Vozdviženie sv. Kríža',          dayType: 'fasting' },
+        { id: 'st-john-theologian-fall',month: 9, day: 26, name: 'Zosnutie sv. apoštola Jána Teológa', dayType: 'celebration' },
+        { id: 'pokrov',                month: 10, day:  1, name: 'Pokrov Presv. Bohorodičky',      dayType: 'celebration' },
+        { id: 'st-luke',               month: 10, day: 18, name: 'Sv. apoštol a evanjelista Lukáš',dayType: 'celebration' },
+        { id: 'st-demetrios',          month: 10, day: 26, name: 'Sv. veľkomuč. Dimitrij Solúnsky',dayType: 'celebration' },
+        { id: 'synaxis-archangels',    month: 11, day:  8, name: 'Zbor sv. archanjela Michala',    dayType: 'celebration' },
+        { id: 'entry-theotokos',       month: 11, day: 21, name: 'Vchod Presv. Bohorodičky do chrámu', dayType: 'celebration' },
+        { id: 'st-andrew-apostle',     month: 11, day: 30, name: 'Sv. apoštol Andrej Prvopovolaný',dayType: 'celebration' },
+        { id: 'st-nicholas',           month: 12, day:  6, name: 'Sv. Mikuláš',                    dayType: 'celebration' },
+        { id: 'st-daniel',             month: 12, day: 17, name: 'Sv. prorok Daniel',              dayType: 'non-fasting' },
+        { id: 'st-lucy',               month: 12, day: 13, name: 'Sv. Lucia',                      dayType: 'non-fasting' },
+        { id: 'nativity',              month: 12, day: 25, name: 'Narodenie Pána (Vianoce)',       dayType: 'celebration' },
+        { id: 'synaxis-theotokos',     month: 12, day: 26, name: 'Zbor Presv. Bohorodičky',        dayType: 'celebration' },
+        { id: 'st-patrick',            month:  3, day: 17, name: 'Sv. Patrik',                     dayType: 'non-fasting' },
+        { id: 'st-wenceslas',          month:  9, day: 28, name: 'Sv. Václav',                     dayType: 'celebration' },
+        { id: 'st-rostislav',          month:  5, day: 14, name: 'Sv. Rostislav Veľkomoravský',    dayType: 'celebration' },
+        { id: 'st-xenia',              month:  1, day: 24, name: 'Sv. Xénia Peterburská',          dayType: 'non-fasting' },
+        { id: 'st-maxim-sandovic',     month:  9, day:  6, name: 'Sv. Maxim Sandovič',             dayType: 'celebration' },
+        { id: 'st-john-merciful',      month: 11, day: 12, name: 'Sv. Ján Milosrdný',              dayType: 'non-fasting' },
+        { id: 'st-symeon-new-theologian', month: 3, day: 12, name: 'Sv. Simeon Nový Teológ',       dayType: 'non-fasting' },
+        { id: 'st-andrew-of-crete',    month:  7, day:  4, name: 'Sv. Andrej Krétsky',             dayType: 'non-fasting' },
+        { id: 'st-theodore-stratilates', month: 2, day:  8, name: 'Sv. veľkomuč. Teodor Stratilates', dayType: 'non-fasting' }
+    ];
+
+    // Return the civil-calendar (Gregorian) date for a fixed feast under the
+    // currently-active liturgical calendar. Julian adds 13 days.
+    function civilDateForFixed(year, feastMonth, feastDay, calendarStyle) {
+        const d = new Date(year, feastMonth - 1, feastDay);
+        if (calendarStyle === 'julian') d.setDate(d.getDate() + JULIAN_OFFSET_DAYS);
+        d.setHours(0, 0, 0, 0);
+        return d;
+    }
+
+    // Return all feasts that fall on `date` (a Date), given the calendar style.
+    // Includes movable (shared) + fixed (shifted for Julian). Returns array of
+    // { id, name, dayType, source:'movable'|'fixed' }.
+    function feastsOnDate(date, calendarStyle) {
+        const out = [];
+        const year = date.getFullYear();
+        const pascha = computePascha(year);
+        // Also consider pascha from previous/next year for offsets that span year boundaries
+        for (const yearOffset of [-1, 0, 1]) {
+            const p = computePascha(year + yearOffset);
+            for (const f of MOVABLE) {
+                const feastDate = addDays(p, f.offset);
+                if (sameDay(feastDate, date)) {
+                    out.push({ id: f.id, name: f.name, dayType: f.dayType, source: 'movable' });
+                }
+            }
+        }
+        // Fixed: try current and adjacent years because Julian shift can cross year boundary
+        for (const yearOffset of [-1, 0, 1]) {
+            for (const f of FIXED) {
+                const feastDate = civilDateForFixed(year + yearOffset, f.month, f.day, calendarStyle);
+                if (sameDay(feastDate, date)) {
+                    out.push({ id: f.id, name: f.name, dayType: f.dayType, source: 'fixed' });
+                }
+            }
+        }
+        return out;
+    }
+
+    // Rank feasts loosely by liturgical rank so the "primary" feast of the day
+    // wins when the day has several. Celebrations > fasting commemorations >
+    // regular commemorations. Movable great feasts outrank fixed minor saints.
+    const MAJOR_MOVABLE = new Set([
+        'pascha', 'palm-sunday', 'lazarus-saturday', 'holy-friday', 'holy-saturday',
+        'thomas-sunday', 'sunday-myrrhbearers', 'sunday-paralytic', 'sunday-samaritan',
+        'sunday-blind-man', 'ascension', 'sunday-fathers-council', 'pentecost',
+        'sunday-all-saints', 'sunday-publican-pharisee', 'sunday-prodigal-son',
+        'sunday-meatfare', 'sunday-cheesefare', 'sunday-orthodoxy',
+        'sunday-gregory-palamas', 'sunday-cross', 'sunday-john-climacus',
+        'sunday-mary-egypt', 'mid-pentecost', 'sunday-russian-saints'
+    ]);
+    const TWELVE_GREAT_FIXED = new Set([
+        'nativity', 'theophany', 'meeting-of-lord', 'annunciation', 'transfiguration',
+        'dormition', 'nativity-theotokos', 'exaltation-cross', 'entry-theotokos', 'pokrov'
+    ]);
+
+    function feastRank(feast) {
+        if (MAJOR_MOVABLE.has(feast.id)) return 100;
+        if (TWELVE_GREAT_FIXED.has(feast.id)) return 90;
+        if (feast.dayType === 'celebration') return 70;
+        if (feast.dayType === 'fasting') return 40;
+        return 20;
+    }
+
+    // Pick the "primary" feast for a date (highest rank), or null.
+    function primaryFeast(date, calendarStyle) {
+        const all = feastsOnDate(date, calendarStyle);
+        if (!all.length) return null;
+        return all.slice().sort((a, b) => feastRank(b) - feastRank(a))[0];
+    }
+
+    // For a week starting Monday, return a map day→{ feast, all } so UI can
+    // auto-fill feast names and surface descriptions.
+    function feastsForWeek(weekStartMonday, calendarStyle) {
+        const map = {};
+        const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+        days.forEach((day, i) => {
+            const d = addDays(weekStartMonday, i);
+            const all = feastsOnDate(d, calendarStyle);
+            map[day] = {
+                date: d,
+                all,
+                primary: all.length ? all.slice().sort((a, b) => feastRank(b) - feastRank(a))[0] : null
+            };
+        });
+        return map;
+    }
+
+    return {
+        computePascha,
+        feastsOnDate,
+        feastsForWeek,
+        primaryFeast,
+        feastRank,
+        MAJOR_MOVABLE,
+        TWELVE_GREAT_FIXED,
+        MOVABLE,
+        FIXED
+    };
+})();
+
 // State management
 const state = {
     currentDay: 'sunday',
     iconImage: null,
     currentGalleryId: null,
     currentWeekStart: null,
+    // Which liturgical calendar is active: 'antiochian' (nový, default for Markovce)
+    // or 'julian' (starý). Affects fixed-date feast mappings in orthodoxCalendar.
+    calendarStyle: 'antiochian',
+    // Per-week icon transform (pan/zoom) applied in drawIcon. Scale is a multiplier
+    // on the fitted draw size; offsetX/Y shift the image inside the icon region.
+    iconTransform: { scale: 1, offsetX: 0, offsetY: 0 },
+    // Track whether the current week's icon was chosen manually vs auto-preselected.
+    // Manual selections survive calendar-style changes; auto selections refresh.
+    iconManual: false,
     events: {
         monday: [],
         tuesday: [],
@@ -72,6 +299,11 @@ function snapshotCurrentWeekToArchive() {
         feasts: { ...state.feasts },
         dayTypes: { ...state.dayTypes },
         fastingMode: state.fastingMode,
+        // Icon selection is per-week so every week can show its own feast icon
+        // even when navigating back through history.
+        iconGalleryId: state.currentGalleryId || null,
+        iconManual: !!state.iconManual,
+        iconTransform: { ...state.iconTransform },
         updatedAt: Date.now()
     };
 }
@@ -90,6 +322,19 @@ function loadWeekFromArchive(weekKey) {
     state.feasts = { ...emptyFeasts, ...(entry.feasts || {}) };
     state.dayTypes = { ...defaultTypes, ...(entry.dayTypes || {}) };
     state.fastingMode = !!entry.fastingMode;
+    state.iconManual = !!entry.iconManual;
+    state.iconTransform = entry.iconTransform && typeof entry.iconTransform === 'object'
+        ? { scale: 1, offsetX: 0, offsetY: 0, ...entry.iconTransform }
+        : { scale: 1, offsetX: 0, offsetY: 0 };
+    // Restore the per-week icon selection if the stored gallery item still exists;
+    // loadIconById is defined later and handles the actual image loading.
+    if (entry.iconGalleryId) {
+        loadIconById(entry.iconGalleryId);
+    } else {
+        state.currentGalleryId = null;
+        state.iconImage = null;
+        state._iconDataUrl = null;
+    }
     return true;
 }
 
@@ -114,27 +359,116 @@ function showSavedToast() {
 
 // ── Gallery ────────────────────────────────────────────────────────────────
 let galleryImages = [];
+// Gallery modal search term (lowercased). Filters both name and feast keywords.
+let gallerySearch = '';
 
-function loadGallery() {
+// loadGallery is async so bootstrap can wait for the manifest before it tries to
+// auto-preselect an icon (which needs the feast→icon mapping).
+async function loadGallery() {
     try {
         const saved = localStorage.getItem('markovce-icons-gallery');
         if (saved) galleryImages = JSON.parse(saved);
     } catch (e) {
         galleryImages = [];
     }
-    // Attempt to load built-in icons from manifest (static file in /icons/)
-    fetch('icons/manifest.json')
-        .then(r => r.json())
-        .then(manifest => {
-            const existingIds = new Set(galleryImages.map(i => i.id));
-            const builtins = (manifest.icons || [])
-                .filter(icon => !existingIds.has(icon.id))
-                .map(icon => ({ id: icon.id, name: icon.name, src: 'icons/' + icon.file, type: 'builtin' }));
-            if (builtins.length) {
-                galleryImages = [...builtins, ...galleryImages];
-            }
-        })
-        .catch(() => { /* no manifest – that's fine */ });
+    try {
+        const response = await fetch('icons/manifest.json');
+        const manifest = await response.json();
+        const existingIds = new Set(galleryImages.map(i => i.id));
+        const builtins = (manifest.icons || [])
+            .filter(icon => !existingIds.has(icon.id))
+            .map(icon => ({
+                id: icon.id,
+                name: icon.name,
+                src: 'icons/' + icon.file,
+                type: 'builtin',
+                feasts: Array.isArray(icon.feasts) ? icon.feasts : [],
+                description: icon.description || ''
+            }));
+        if (builtins.length) {
+            galleryImages = [...builtins, ...galleryImages];
+        }
+    } catch (e) {
+        // No manifest, or failed to parse — proceed with whatever's in localStorage.
+    }
+}
+
+// Return gallery items whose `feasts` array includes feastId. Sorted so major
+// matches come first (purely by manifest order for now — stable and predictable).
+function iconsForFeast(feastId) {
+    if (!feastId) return [];
+    return galleryImages.filter(img => Array.isArray(img.feasts) && img.feasts.includes(feastId));
+}
+
+// Collect all feasts occurring during the week (any day) with their icons, in
+// rank order. Used for the "recommended" section in the gallery modal and for
+// the weekly feast description box.
+function weekFeastRecommendations() {
+    if (!state.currentWeekStart) return { byDay: {}, all: [] };
+    const byDay = orthodoxCalendar.feastsForWeek(state.currentWeekStart, state.calendarStyle);
+    const all = [];
+    const seen = new Set();
+    ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].forEach(day => {
+        const entry = byDay[day];
+        if (!entry || !entry.all) return;
+        entry.all.forEach(f => {
+            if (seen.has(f.id)) return;
+            seen.add(f.id);
+            const icons = iconsForFeast(f.id);
+            all.push({ ...f, day, date: entry.date, icons });
+        });
+    });
+    all.sort((a, b) => orthodoxCalendar.feastRank(b) - orthodoxCalendar.feastRank(a));
+    return { byDay, all };
+}
+
+// The primary feast used for auto-icon-preselection. Prefers Sunday's feast
+// (the "nedeľa" is the anchor of the week), falls back to the highest-rank
+// feast of the week.
+function primaryWeekFeast() {
+    if (!state.currentWeekStart) return null;
+    const byDay = orthodoxCalendar.feastsForWeek(state.currentWeekStart, state.calendarStyle);
+    const sunday = byDay.sunday && byDay.sunday.primary;
+    if (sunday) return { ...sunday, day: 'sunday', date: byDay.sunday.date };
+    // Fall back to highest-ranked feast in the week
+    let best = null;
+    let bestDay = null;
+    ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].forEach(day => {
+        const p = byDay[day] && byDay[day].primary;
+        if (!p) return;
+        if (!best || orthodoxCalendar.feastRank(p) > orthodoxCalendar.feastRank(best)) {
+            best = p;
+            bestDay = day;
+        }
+    });
+    return best ? { ...best, day: bestDay, date: byDay[bestDay].date } : null;
+}
+
+// Apply an auto-preselection for the current week if the user hasn't chosen
+// manually. Looks up the primary feast and the first matching icon, and also
+// auto-fills empty `feasts[day]` entries with feast names as a convenience.
+function applyAutoIconPreselection({ force = false } = {}) {
+    if (!state.currentWeekStart) return;
+    if (state.iconManual && !force) return;
+
+    // Auto-fill feast names for any day that has a feast and an empty user entry.
+    // User-typed feast names are never overwritten.
+    const byDay = orthodoxCalendar.feastsForWeek(state.currentWeekStart, state.calendarStyle);
+    ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].forEach(day => {
+        const entry = byDay[day];
+        if (!entry || !entry.primary) return;
+        if (!state.feasts[day]) {
+            state.feasts[day] = entry.primary.name;
+        }
+    });
+
+    const primary = primaryWeekFeast();
+    if (!primary) return;
+    const icons = iconsForFeast(primary.id);
+    if (!icons.length) return;
+    const chosen = icons[0];
+    if (state.currentGalleryId === chosen.id && state.iconImage) return; // already applied
+    loadIconById(chosen.id);
 }
 
 function saveGallery() {
@@ -161,8 +495,13 @@ function addToGallery(src, suggestedName) {
 }
 
 function openGallery() {
+    // Reset search so the user doesn't land on a stale filter from a prior open.
+    gallerySearch = '';
+    const searchInput = document.getElementById('gallerySearch');
+    if (searchInput) searchInput.value = '';
     renderGallery();
     document.getElementById('galleryModal').style.display = 'flex';
+    if (searchInput) searchInput.focus();
 }
 
 function closeGallery() {
@@ -175,13 +514,51 @@ function renderGallery() {
         grid.innerHTML = '<p class="gallery-empty">Galéria je prázdna. Nahrajte prvú ikonu pomocou tlačidla vyššie.</p>';
         return;
     }
-    grid.innerHTML = galleryImages.map(img => {
+
+    // Compute recommended icon IDs for the current week so we can show them in
+    // a dedicated section above the general grid.
+    const { all: weekFeasts } = weekFeastRecommendations();
+    const recommendedIds = [];
+    const recommendedMeta = new Map(); // id → which feasts it was recommended for
+    weekFeasts.forEach(f => {
+        f.icons.forEach(icon => {
+            if (!recommendedIds.includes(icon.id)) recommendedIds.push(icon.id);
+            const meta = recommendedMeta.get(icon.id) || [];
+            meta.push(f);
+            recommendedMeta.set(icon.id, meta);
+        });
+    });
+
+    // Apply text filter. Matches against name, description, and feast IDs.
+    const q = gallerySearch.trim().toLowerCase();
+    const matches = (img) => {
+        if (!q) return true;
+        if (img.name && img.name.toLowerCase().includes(q)) return true;
+        if (img.description && img.description.toLowerCase().includes(q)) return true;
+        if (Array.isArray(img.feasts) && img.feasts.some(f => f.toLowerCase().includes(q))) return true;
+        return false;
+    };
+
+    const recommended = recommendedIds
+        .map(id => galleryImages.find(i => i.id === id))
+        .filter(Boolean)
+        .filter(matches);
+    const recIdSet = new Set(recommended.map(i => i.id));
+    const others = galleryImages.filter(img => !recIdSet.has(img.id)).filter(matches);
+
+    const renderItem = (img, { recommendedFor } = {}) => {
         const safeName = escapeHtml(img.name);
         const safeId = escapeHtml(img.id);
         const safeSrc = escapeHtml(img.src);
+        const safeDesc = img.description ? escapeHtml(img.description) : '';
+        const title = safeDesc ? ` title="${safeDesc}"` : '';
+        const recommendedBadge = recommendedFor && recommendedFor.length
+            ? `<div class="gallery-item-badge" title="${escapeHtml(recommendedFor.map(f => f.name).join(' · '))}">★ Odporúčané</div>`
+            : '';
         return `
-            <div class="gallery-item${state.currentGalleryId === img.id ? ' selected' : ''}"
-                 onclick="selectFromGallery('${safeId}')">
+            <div class="gallery-item${state.currentGalleryId === img.id ? ' selected' : ''}${recommendedFor ? ' recommended' : ''}"
+                 onclick="selectFromGallery('${safeId}')"${title}>
+                ${recommendedBadge}
                 <img src="${safeSrc}" alt="${safeName}" loading="lazy">
                 <div class="gallery-item-name">${safeName}</div>
                 ${img.type === 'uploaded'
@@ -189,13 +566,60 @@ function renderGallery() {
                     : ''}
             </div>
         `;
-    }).join('');
+    };
+
+    let html = '';
+    if (recommended.length) {
+        const feastListHtml = weekFeasts.slice(0, 4).map(f => {
+            const dayLabel = {
+                monday: 'Pondelok', tuesday: 'Utorok', wednesday: 'Streda',
+                thursday: 'Štvrtok', friday: 'Piatok', saturday: 'Sobota', sunday: 'Nedeľa'
+            }[f.day] || '';
+            return `<li><strong>${escapeHtml(dayLabel)}:</strong> ${escapeHtml(f.name)}</li>`;
+        }).join('');
+        html += `
+            <div class="gallery-section gallery-section-recommended">
+                <div class="gallery-section-header">
+                    <h3>★ Odporúčané pre tento týždeň</h3>
+                    ${feastListHtml ? `<ul class="gallery-week-feasts">${feastListHtml}</ul>` : ''}
+                </div>
+                <div class="gallery-grid-inner">
+                    ${recommended.map(img => renderItem(img, { recommendedFor: recommendedMeta.get(img.id) })).join('')}
+                </div>
+            </div>
+        `;
+    }
+    if (others.length) {
+        html += `
+            <div class="gallery-section">
+                <div class="gallery-section-header">
+                    <h3>Všetky ikony${q ? ` — výsledky hľadania (${others.length + recommended.length})` : ''}</h3>
+                </div>
+                <div class="gallery-grid-inner">
+                    ${others.map(img => renderItem(img)).join('')}
+                </div>
+            </div>
+        `;
+    }
+    if (!recommended.length && !others.length) {
+        html = `<p class="gallery-empty">Žiadna ikona neobsahuje „${escapeHtml(gallerySearch)}“.</p>`;
+    }
+    grid.innerHTML = html;
+}
+
+function onGallerySearchInput(value) {
+    gallerySearch = value || '';
+    renderGallery();
 }
 
 function selectFromGallery(id) {
     const item = galleryImages.find(i => i.id === id);
     if (!item) return;
     state.currentGalleryId = id;
+    state.iconManual = true; // explicit user pick — do not auto-overwrite
+    // Reset per-week transform when switching icons; otherwise the old pan/zoom
+    // gets applied to the new image (common source of confusion).
+    state.iconTransform = { scale: 1, offsetX: 0, offsetY: 0 };
     const img = new Image();
     img.onload = () => {
         state.iconImage = img;
@@ -205,6 +629,22 @@ function selectFromGallery(id) {
     };
     img.src = item.src;
     closeGallery();
+}
+
+// Load an icon by id without touching iconManual. Used when restoring a week's
+// archived icon or applying an auto-preselection.
+function loadIconById(id) {
+    const item = galleryImages.find(i => i.id === id);
+    if (!item) return false;
+    state.currentGalleryId = id;
+    const img = new Image();
+    img.onload = () => {
+        state.iconImage = img;
+        state._iconDataUrl = item.src;
+        updatePreview();
+    };
+    img.src = item.src;
+    return true;
 }
 
 function deleteFromGallery(event, id) {
@@ -241,6 +681,7 @@ function flushSaveToLocalStorage() {
             currentDay: state.currentDay,
             currentWeekStart: state.currentWeekStart ? state.currentWeekStart.toISOString() : null,
             currentGalleryId: state.currentGalleryId,
+            calendarStyle: state.calendarStyle,
             // Keep legacy top-level fields for backward compatibility with older clients/exports
             events: state.events,
             feasts: state.feasts,
@@ -270,6 +711,7 @@ function loadFromLocalStorage() {
 
         // Restore session state
         state.currentDay = parsed.currentDay || 'sunday';
+        state.calendarStyle = parsed.calendarStyle === 'julian' ? 'julian' : 'antiochian';
         state.archive = parsed.archive && typeof parsed.archive === 'object' ? parsed.archive : {};
 
         // Restore week start date
@@ -333,9 +775,10 @@ const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Máj', 'Jún',
     'Júl', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec'];
 
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    // Load gallery
-    loadGallery();
+document.addEventListener('DOMContentLoaded', async () => {
+    // Load gallery (async — we need the manifest before we can auto-preselect
+    // a week's feast icon or show the "recommended" section).
+    await loadGallery();
 
     // Try to load from localStorage first
     const loaded = loadFromLocalStorage();
@@ -382,11 +825,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Sync fasting mode checkbox with state
     document.getElementById('fastingMode').checked = state.fastingMode;
 
+    // Reflect the stored (or defaulted) calendar style in the picker
+    syncCalendarPickerUI();
+
+    // Auto-preselect icon + auto-fill feast names for the newly-loaded week.
+    // Respects iconManual so returning users keep their chosen icons.
+    applyAutoIconPreselection();
+
     // Make sure the initial week is in the archive (so it shows in stats even before any edit)
     snapshotCurrentWeekToArchive();
 
     updateUI();
     applyLockState();
+    renderWeekFeastHints();
 
     // From this point onward, persisted edits trigger the "Uložené" toast.
     // (Suppressed during bootstrap so initial state restore doesn't flash it.)
@@ -456,8 +907,40 @@ function initializeEventListeners() {
         navigateWeeks(1);
     });
 
+    // Calendar-style picker: switching the calendar reshuffles fixed-feast
+    // dates, which changes what icons/feasts are recommended for the week.
+    document.querySelectorAll('input[name="calendarStyle"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            const val = e.target.value === 'julian' ? 'julian' : 'antiochian';
+            if (val === state.calendarStyle) return;
+            state.calendarStyle = val;
+            // Clear auto-generated feast names so the new calendar's feasts take
+            // over. User-edited names (marked manual) would be respected, but the
+            // current model auto-fills only blanks — so we only clear blanks... which
+            // means we just re-run auto-fill: leave any currently-typed text alone.
+            applyAutoIconPreselection();
+            renderDayDetails();
+            updatePreview();
+            renderWeekFeastHints();
+            saveToLocalStorage();
+        });
+    });
+
+    // Gallery search
+    const gsearch = document.getElementById('gallerySearch');
+    if (gsearch) gsearch.addEventListener('input', (e) => onGallerySearchInput(e.target.value));
+
+    // Image editor: open via button over the preview on every viewport.
+    const editBtn = document.getElementById('openImageEditorBtn');
+    if (editBtn) editBtn.addEventListener('click', openImageEditor);
+
     // View switcher (mobile / tablet portrait)
     initializeViewSwitcher();
+}
+
+function syncCalendarPickerUI() {
+    const radios = document.querySelectorAll('input[name="calendarStyle"]');
+    radios.forEach(r => { r.checked = r.value === state.calendarStyle; });
 }
 
 function initializeViewSwitcher() {
@@ -520,10 +1003,17 @@ function jumpToThisWeek() {
 
     snapshotCurrentWeekToArchive();
     state.currentWeekStart = monday;
+    // A week we haven't seen yet starts with a fresh "auto" icon slot so the
+    // preselection can pick this week's feast icon. Archived weeks below
+    // reload iconManual/iconTransform from disk.
+    state.iconManual = false;
+    state.iconTransform = { scale: 1, offsetX: 0, offsetY: 0 };
     const key = getWeekKey(monday);
     if (hasArchiveEntry(key)) loadWeekFromArchive(key);
+    applyAutoIconPreselection();
     updateUI();
     renderDayDetails();
+    renderWeekFeastHints();
     document.getElementById('fastingMode').checked = state.fastingMode;
     applyLockState();
     saveToLocalStorage();
@@ -540,16 +1030,27 @@ function navigateWeeks(deltaWeeks) {
     if (hasArchiveEntry(key)) {
         // Archived week — load exactly what was planned for that week.
         loadWeekFromArchive(key);
-    } else if (isWeekFullyPast(state.currentWeekStart)) {
-        // Past week with no archive — show empty so we don't pretend the
-        // current-week program was actually used that week.
-        resetCurrentWeekToEmpty();
+    } else {
+        // Fresh week — reset the icon to "auto" so preselection can run below,
+        // rather than carrying over the previous week's chosen icon.
+        state.iconManual = false;
+        state.iconTransform = { scale: 1, offsetX: 0, offsetY: 0 };
+        state.currentGalleryId = null;
+        state.iconImage = null;
+        state._iconDataUrl = null;
+        if (isWeekFullyPast(state.currentWeekStart)) {
+            // Past week with no archive — show empty so we don't pretend the
+            // current-week program was actually used that week.
+            resetCurrentWeekToEmpty();
+        }
+        // Otherwise (future / current week with no archive): keep events/feasts
+        // as a template; only icon gets reset. Auto-preselection below will run.
     }
-    // Otherwise (future / current week with no archive): keep current in-memory
-    // state as a starting template so the user can iterate week-over-week.
 
+    applyAutoIconPreselection();
     updateUI();
     renderDayDetails();
+    renderWeekFeastHints();
     document.getElementById('fastingMode').checked = state.fastingMode;
     applyLockState();
     saveToLocalStorage();
@@ -578,6 +1079,8 @@ function handleIconUpload(e) {
         const src = event.target.result;
         const id = addToGallery(src, file.name.replace(/\.[^.]+$/, ''));
         state.currentGalleryId = id;
+        state.iconManual = true;
+        state.iconTransform = { scale: 1, offsetX: 0, offsetY: 0 };
         const img = new Image();
         img.onload = () => {
             state.iconImage = img;
@@ -760,8 +1263,9 @@ function initializeContainerDragListener() {
 // ── Modal dismiss: Esc key + backdrop click ────────────────────────────────
 function initializeModalDismissHandlers() {
     const modals = [
-        { id: 'galleryModal', close: closeGallery },
-        { id: 'statsModal',   close: closeStats }
+        { id: 'galleryModal',      close: closeGallery },
+        { id: 'statsModal',        close: closeStats },
+        { id: 'imageEditorModal',  close: closeImageEditor }
     ];
 
     // Backdrop click (click lands on the modal backdrop itself, not the inner content card)
@@ -868,18 +1372,33 @@ function drawIcon(ctx, canvas, scale) {
     const imgAspect = state.iconImage.width / state.iconImage.height;
     const canvasAspect = targetW / targetH;
 
-    let drawW, drawH, drawX, drawY;
+    // Base fit: "cover" the icon region. The user's iconTransform (scale/offset)
+    // is layered on top so crops stay WYSIWYG between preview and export.
+    let baseW, baseH;
     if (imgAspect > canvasAspect) {
-        drawH = targetH;
-        drawW = targetH * imgAspect;
-        drawX = x + (targetW - drawW) / 2;
-        drawY = 0;
+        baseH = targetH;
+        baseW = targetH * imgAspect;
     } else {
-        drawW = targetW;
-        drawH = targetW / imgAspect;
-        drawX = x;
-        drawY = (targetH - drawH) / 2;
+        baseW = targetW;
+        baseH = targetW / imgAspect;
     }
+
+    const t = state.iconTransform || { scale: 1, offsetX: 0, offsetY: 0 };
+    const userScale = Math.max(0.2, Math.min(4, Number(t.scale) || 1));
+    const drawW = baseW * userScale;
+    const drawH = baseH * userScale;
+    // offsetX/Y are stored as fractions of the icon region (-1..1), so they
+    // produce the same visual pan on preview and full-res export.
+    const offX = (Number(t.offsetX) || 0) * targetW;
+    const offY = (Number(t.offsetY) || 0) * targetH;
+    const drawX = x + (targetW - drawW) / 2 + offX;
+    const drawY = (targetH - drawH) / 2 + offY;
+
+    // Clip to the icon region so oversized/panned images don't bleed over the
+    // schedule text on the left.
+    ctx.beginPath();
+    ctx.rect(x, 0, targetW, targetH);
+    ctx.clip();
 
     // Draw the image
     ctx.drawImage(state.iconImage, drawX, drawY, drawW, drawH);
@@ -1367,10 +1886,15 @@ function jumpToWeek(weekKey) {
     state.currentWeekStart = parseWeekKey(weekKey);
     if (hasArchiveEntry(weekKey)) {
         loadWeekFromArchive(weekKey);
+    } else {
+        state.iconManual = false;
+        state.iconTransform = { scale: 1, offsetX: 0, offsetY: 0 };
     }
+    applyAutoIconPreselection();
     saveToLocalStorage();
     updateUI();
     renderDayDetails();
+    renderWeekFeastHints();
     document.getElementById('fastingMode').checked = state.fastingMode;
     applyLockState();
     closeStats();
@@ -1500,6 +2024,246 @@ function renderStats() {
         });
     });
 }
+// ───────────────────────────────────────────────────────────────────────────
+
+// ── Week feast hints (sidebar info panel) ──────────────────────────────────
+// Surfaces the big feasts of the current week so the priest/deacon knows what
+// to expect when they open a week (e.g. "Thu: St. George, Sat: Apostle James").
+function renderWeekFeastHints() {
+    const container = document.getElementById('weekFeastHints');
+    if (!container) return;
+    const { all, byDay } = weekFeastRecommendations();
+    if (!all.length) {
+        container.innerHTML = `<p class="week-feasts-empty">Žiadne väčšie sviatky v tomto týždni.</p>`;
+        return;
+    }
+    const dayLabels = {
+        monday: 'Po', tuesday: 'Ut', wednesday: 'St',
+        thursday: 'Št', friday: 'Pi', saturday: 'So', sunday: 'Ne'
+    };
+    // Show only celebrations / fasting-major / MAJOR_MOVABLE / TWELVE_GREAT_FIXED
+    const notable = all.filter(f =>
+        orthodoxCalendar.feastRank(f) >= 40
+        || orthodoxCalendar.MAJOR_MOVABLE.has(f.id)
+        || orthodoxCalendar.TWELVE_GREAT_FIXED.has(f.id)
+    );
+    if (!notable.length) {
+        container.innerHTML = `<p class="week-feasts-empty">Žiadne väčšie sviatky v tomto týždni.</p>`;
+        return;
+    }
+    const calendarLabel = state.calendarStyle === 'julian' ? 'Juliánsky (starý)' : 'Antiochijský (nový)';
+    const rows = notable.map(f => {
+        const dLabel = dayLabels[f.day] || '';
+        const dateStr = `${f.date.getDate()}. ${monthNames[f.date.getMonth()]}`;
+        return `
+            <li class="week-feast-item">
+                <span class="week-feast-day">${dLabel} · ${dateStr}</span>
+                <span class="week-feast-name">☦ ${escapeHtml(f.name)}</span>
+            </li>
+        `;
+    }).join('');
+    container.innerHTML = `
+        <div class="week-feasts-header">
+            <span class="week-feasts-title">Sviatky týždňa</span>
+            <span class="week-feasts-calendar">${escapeHtml(calendarLabel)}</span>
+        </div>
+        <ul class="week-feasts-list">${rows}</ul>
+    `;
+}
+
+// ── Image editor (scale / crop) ────────────────────────────────────────────
+// Lightweight on-canvas editor: live preview at icon-region aspect ratio with
+// scale slider + draggable pan. Persists into state.iconTransform per-week.
+const imageEditor = {
+    canvas: null,
+    ctx: null,
+    draftScale: 1,
+    draftOffsetX: 0,
+    draftOffsetY: 0,
+    dragging: false,
+    dragStartX: 0,
+    dragStartY: 0,
+    dragStartOffsetX: 0,
+    dragStartOffsetY: 0,
+    // Match aspect ratio of the icon region on the export (0.6 * 1200 × 1200)
+    editorWidth: 480,
+    editorHeight: 600,
+    initialized: false
+};
+
+function openImageEditor() {
+    if (!state.iconImage) {
+        alert('Najprv vyberte alebo nahrajte ikonu.');
+        return;
+    }
+    if (isCurrentWeekLocked()) {
+        alert('Tento týždeň je uzamknutý. Odomknite ho pre úpravy.');
+        return;
+    }
+    const modal = document.getElementById('imageEditorModal');
+    if (!modal) return;
+
+    // Copy current transform into the draft so Cancel can discard changes.
+    imageEditor.draftScale = state.iconTransform.scale || 1;
+    imageEditor.draftOffsetX = state.iconTransform.offsetX || 0;
+    imageEditor.draftOffsetY = state.iconTransform.offsetY || 0;
+
+    if (!imageEditor.initialized) initializeImageEditor();
+
+    modal.style.display = 'flex';
+    syncImageEditorControls();
+    renderImageEditor();
+}
+
+function closeImageEditor() {
+    const modal = document.getElementById('imageEditorModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function initializeImageEditor() {
+    const canvas = document.getElementById('imageEditorCanvas');
+    if (!canvas) return;
+    imageEditor.canvas = canvas;
+    imageEditor.ctx = canvas.getContext('2d');
+
+    const scaleInput = document.getElementById('imageEditorScale');
+    if (scaleInput) {
+        scaleInput.addEventListener('input', (e) => {
+            imageEditor.draftScale = Number(e.target.value);
+            updateScaleLabel();
+            renderImageEditor();
+        });
+    }
+
+    // Drag to pan
+    const onDown = (clientX, clientY) => {
+        imageEditor.dragging = true;
+        imageEditor.dragStartX = clientX;
+        imageEditor.dragStartY = clientY;
+        imageEditor.dragStartOffsetX = imageEditor.draftOffsetX;
+        imageEditor.dragStartOffsetY = imageEditor.draftOffsetY;
+    };
+    const onMove = (clientX, clientY) => {
+        if (!imageEditor.dragging) return;
+        const rect = canvas.getBoundingClientRect();
+        // Convert pixel delta to fraction of icon region (offsets are stored as
+        // fractions so preview ↔ export scale identically).
+        const dxFrac = (clientX - imageEditor.dragStartX) / rect.width;
+        const dyFrac = (clientY - imageEditor.dragStartY) / rect.height;
+        imageEditor.draftOffsetX = clamp(imageEditor.dragStartOffsetX + dxFrac, -1, 1);
+        imageEditor.draftOffsetY = clamp(imageEditor.dragStartOffsetY + dyFrac, -1, 1);
+        renderImageEditor();
+    };
+    const onUp = () => { imageEditor.dragging = false; };
+
+    canvas.addEventListener('mousedown', (e) => { e.preventDefault(); onDown(e.clientX, e.clientY); });
+    window.addEventListener('mousemove', (e) => onMove(e.clientX, e.clientY));
+    window.addEventListener('mouseup', onUp);
+    canvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        // preventDefault to stop the page scrolling while we pan.
+        e.preventDefault();
+        onDown(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+    canvas.addEventListener('touchmove', (e) => {
+        if (e.touches.length !== 1) return;
+        e.preventDefault();
+        onMove(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+    canvas.addEventListener('touchend', onUp);
+
+    imageEditor.initialized = true;
+}
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function syncImageEditorControls() {
+    const scaleInput = document.getElementById('imageEditorScale');
+    if (scaleInput) scaleInput.value = imageEditor.draftScale;
+    updateScaleLabel();
+}
+
+function updateScaleLabel() {
+    const label = document.getElementById('imageEditorScaleValue');
+    if (label) label.textContent = `${Math.round(imageEditor.draftScale * 100)}%`;
+}
+
+function renderImageEditor() {
+    const canvas = imageEditor.canvas;
+    const ctx = imageEditor.ctx;
+    if (!canvas || !ctx || !state.iconImage) return;
+
+    const W = imageEditor.editorWidth;
+    const H = imageEditor.editorHeight;
+    canvas.width = W;
+    canvas.height = H;
+
+    // Background matching the generated image so WYSIWYG holds at this step too.
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+    if (state.fastingMode) {
+        bgGrad.addColorStop(0, '#5b1a8a');
+        bgGrad.addColorStop(1, '#2d0a52');
+    } else {
+        bgGrad.addColorStop(0, '#c9b48b');
+        bgGrad.addColorStop(1, '#a68a54');
+    }
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Fit image "cover" then apply draft transform — mirror drawIcon() so the
+    // user sees exactly what the export will render.
+    const imgAspect = state.iconImage.width / state.iconImage.height;
+    const canvasAspect = W / H;
+    let baseW, baseH;
+    if (imgAspect > canvasAspect) {
+        baseH = H;
+        baseW = H * imgAspect;
+    } else {
+        baseW = W;
+        baseH = W / imgAspect;
+    }
+    const s = imageEditor.draftScale;
+    const drawW = baseW * s;
+    const drawH = baseH * s;
+    const offX = imageEditor.draftOffsetX * W;
+    const offY = imageEditor.draftOffsetY * H;
+    const drawX = (W - drawW) / 2 + offX;
+    const drawY = (H - drawH) / 2 + offY;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, W, H);
+    ctx.clip();
+    ctx.drawImage(state.iconImage, drawX, drawY, drawW, drawH);
+    ctx.restore();
+
+    // Crop border overlay to make the clip region obvious.
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.strokeRect(1, 1, W - 2, H - 2);
+    ctx.setLineDash([]);
+}
+
+function imageEditorReset() {
+    imageEditor.draftScale = 1;
+    imageEditor.draftOffsetX = 0;
+    imageEditor.draftOffsetY = 0;
+    syncImageEditorControls();
+    renderImageEditor();
+}
+
+function imageEditorApply() {
+    state.iconTransform = {
+        scale: imageEditor.draftScale,
+        offsetX: imageEditor.draftOffsetX,
+        offsetY: imageEditor.draftOffsetY
+    };
+    updatePreview();
+    saveToLocalStorage();
+    closeImageEditor();
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 
 // polyfill for roundRect
