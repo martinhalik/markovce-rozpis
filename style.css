@@ -1543,6 +1543,26 @@ body.week-locked .fasting-mode-label {
     }
 }
 
+/* ── Site footer (attribution) ─────────────────────────────────────────── */
+.site-footer {
+    max-width: 1800px;
+    margin: 28px auto 8px;
+    padding: 14px 20px;
+    text-align: center;
+    color: var(--text-gray);
+    font-size: 0.82rem;
+}
+
+.site-footer a {
+    color: var(--primary-blue);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.site-footer a:hover {
+    text-decoration: underline;
+}
+
 /* ── Calendar style picker ─────────────────────────────────────────────── */
 .calendar-style-selector {
     display: grid;
