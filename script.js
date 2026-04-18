@@ -1214,7 +1214,7 @@ const sync = (() => {
         if (inFlight && !beacon) return;
         const weekKeys = [...dirtyWeeks]; dirtyWeeks.clear();
         const settingKeys = [...dirtySettings]; dirtySettings.clear();
-        if (!weekKeys.length && !settingKeys.length) return;
+        if (!weekKeys.length && !settingKeys.length) { setStatus('synced'); return; }
         inFlight = true;
         setStatus('uploading');
         try {
@@ -1305,8 +1305,24 @@ const sync = (() => {
                 dirtySettings.add('calendarStyle');
             }
 
-            // Persist merged state to offline cache
-            flushSaveToLocalStorage();
+            // Persist merged state to offline cache — write directly to avoid
+            // triggering the "Uložené" toast (user made no edit) or a redundant
+            // sync schedule from inside flushSaveToLocalStorage.
+            try {
+                const stateToSave = {
+                    currentDay: state.currentDay,
+                    currentWeekStart: state.currentWeekStart ? state.currentWeekStart.toISOString() : null,
+                    currentGalleryId: state.currentGalleryId,
+                    calendarStyle: state.calendarStyle,
+                    events: state.events,
+                    feasts: state.feasts,
+                    dayTypes: state.dayTypes,
+                    fastingMode: state.fastingMode,
+                    archive: state.archive,
+                    iconImageData: state._iconDataUrl || null,
+                };
+                localStorage.setItem('markovce-rozpis-state', JSON.stringify(stateToSave));
+            } catch (_) {}
 
             // Reload current week in UI if server had a newer copy
             if (touchedCurrentWeek && curKey && hasArchiveEntry(curKey)) {
@@ -1325,7 +1341,7 @@ const sync = (() => {
         }
     }
 
-    window.addEventListener('online',  () => { setStatus(hasKey() ? 'synced' : 'hidden'); scheduleFlush(); });
+    window.addEventListener('online',  () => { if (hasKey()) scheduleFlush(); });
     window.addEventListener('offline', () => setStatus(hasKey() ? 'offline' : 'hidden'));
 
     return { bootstrap, scheduleFlush, flushNow, markWeekDirty, markSettingDirty };

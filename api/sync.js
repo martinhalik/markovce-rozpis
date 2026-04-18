@@ -1,5 +1,8 @@
 import { sql } from '@vercel/postgres';
 
+const WEEK_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ALLOWED_SETTINGS_KEYS = new Set(['calendarStyle']);
+
 let schemaReady = false;
 
 async function ensureSchema() {
@@ -49,7 +52,11 @@ export default async function handler(req, res) {
 
             if (body && body.weekKey) {
                 const { weekKey, payload, updated_at } = body;
-                if (!weekKey || !payload || typeof updated_at !== 'number') {
+                if (
+                    typeof weekKey !== 'string' || !WEEK_KEY_RE.test(weekKey) ||
+                    !payload || typeof payload !== 'object' ||
+                    !Number.isFinite(updated_at) || updated_at <= 0
+                ) {
                     return res.status(400).json({ error: 'bad body' });
                 }
                 await sql`
@@ -64,7 +71,10 @@ export default async function handler(req, res) {
 
             if (body && body.settingsKey) {
                 const { settingsKey, value, updated_at } = body;
-                if (!settingsKey || typeof updated_at !== 'number') {
+                if (
+                    typeof settingsKey !== 'string' || !ALLOWED_SETTINGS_KEYS.has(settingsKey) ||
+                    !Number.isFinite(updated_at) || updated_at <= 0
+                ) {
                     return res.status(400).json({ error: 'bad body' });
                 }
                 await sql`
