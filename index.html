@@ -220,6 +220,14 @@
                         <input type="search" id="gallerySearch" placeholder="Hľadať ikonu (názov, sviatok)…"
                                autocomplete="off" aria-label="Hľadať ikonu">
                     </label>
+                    <label for="gallerySort" class="gallery-sort-label">
+                        <span class="gallery-sort-icon" aria-hidden="true">↕</span>
+                        <select id="gallerySort" aria-label="Zoradiť ikony">
+                            <option value="name">Podľa názvu</option>
+                            <option value="date">Podľa dátumu sviatku</option>
+                            <option value="type">Podľa typu</option>
+                        </select>
+                    </label>
                     <div class="gallery-upload-area">
                         <label for="galleryUpload" class="gallery-add-btn">+ Pridať ikonu</label>
                         <input type="file" id="galleryUpload" accept="image/*" style="display:none">

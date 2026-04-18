@@ -395,6 +395,11 @@ function showSavedToast() {
 let galleryImages = [];
 // Gallery modal search term (lowercased). Filters both name and feast keywords.
 let gallerySearch = '';
+// Gallery sort mode: 'name' (alphabetical, default), 'date' (feast date in
+// the currently-displayed week's year), or 'type' (grouped under liturgical
+// category headers). Applies only to the "Všetky ikony" section; the
+// "Odporúčané" section always shows at the top regardless of sort.
+let gallerySort = 'name';
 
 // loadGallery is async so bootstrap can wait for the manifest before it tries to
 // auto-preselect an icon (which needs the feast→icon mapping).
@@ -551,9 +556,13 @@ function addToGallery(src, suggestedName) {
 
 function openGallery() {
     // Reset search so the user doesn't land on a stale filter from a prior open.
+    // Sort mode persists across opens — it's a stable preference, not a
+    // per-open context (unlike a transient search query).
     gallerySearch = '';
     const searchInput = document.getElementById('gallerySearch');
     if (searchInput) searchInput.value = '';
+    const sortSelect = document.getElementById('gallerySort');
+    if (sortSelect) sortSelect.value = gallerySort;
     renderGallery();
     document.getElementById('galleryModal').style.display = 'flex';
     if (searchInput) searchInput.focus();
@@ -667,16 +676,8 @@ function renderGallery() {
         `;
     }
     if (others.length) {
-        html += `
-            <div class="gallery-section">
-                <div class="gallery-section-header">
-                    <h3>Všetky ikony${q ? ` — výsledky hľadania (${others.length + recommended.length})` : ''}</h3>
-                </div>
-                <div class="gallery-grid-inner">
-                    ${others.map(img => renderItem(img)).join('')}
-                </div>
-            </div>
-        `;
+        const heading = `Všetky ikony${q ? ` — výsledky hľadania (${others.length + recommended.length})` : ''}`;
+        html += renderAllIconsSection(others, heading, renderItem);
     }
     if (!recommended.length && !others.length) {
         html = `<p class="gallery-empty">Žiadna ikona neobsahuje „${escapeHtml(gallerySearch)}“.</p>`;
@@ -687,6 +688,157 @@ function renderGallery() {
 function onGallerySearchInput(value) {
     gallerySearch = value || '';
     renderGallery();
+}
+
+function onGallerySortChange(value) {
+    gallerySort = value || 'name';
+    renderGallery();
+}
+
+// Render the "Všetky ikony" section using the current sort mode. For 'name'
+// and 'date' we emit a single flat grid; for 'type' we emit one sub-section
+// per non-empty category with its own h4 header and grid. This is the only
+// part of the gallery that reacts to the sort mode — the "Odporúčané" section
+// always stays at top, in recommendation order.
+function renderAllIconsSection(icons, heading, renderItem) {
+    const referenceYear = state.currentWeekStart
+        ? state.currentWeekStart.getFullYear()
+        : new Date().getFullYear();
+
+    if (gallerySort === 'type') {
+        const groups = new Map(CATEGORY_GROUP_ORDER.map(g => [g.key, []]));
+        icons.forEach(icon => {
+            const key = categoryForIcon(icon);
+            (groups.get(key) || groups.get('other')).push(icon);
+        });
+        // Sort inside each group by date (liturgical reading order within the
+        // category); saints fall through to name when they share a date.
+        const groupsHtml = CATEGORY_GROUP_ORDER
+            .map(g => ({ ...g, items: groups.get(g.key) }))
+            .filter(g => g.items && g.items.length)
+            .map(g => {
+                g.items.sort((a, b) => compareIconsByDate(a, b, referenceYear));
+                return `
+                    <div class="gallery-type-group">
+                        <h4 class="gallery-type-heading">${escapeHtml(g.label)} <span class="gallery-type-count">${g.items.length}</span></h4>
+                        <div class="gallery-grid-inner">
+                            ${g.items.map(img => renderItem(img)).join('')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        return `
+            <div class="gallery-section">
+                <div class="gallery-section-header">
+                    <h3>${escapeHtml(heading)}</h3>
+                </div>
+                ${groupsHtml}
+            </div>
+        `;
+    }
+
+    const sorted = [...icons];
+    if (gallerySort === 'date') {
+        sorted.sort((a, b) => compareIconsByDate(a, b, referenceYear));
+    } else {
+        sorted.sort(compareIconsByName);
+    }
+    return `
+        <div class="gallery-section">
+            <div class="gallery-section-header">
+                <h3>${escapeHtml(heading)}</h3>
+            </div>
+            <div class="gallery-grid-inner">
+                ${sorted.map(img => renderItem(img)).join('')}
+            </div>
+        </div>
+    `;
+}
+
+// ── Icon categorization for "sort by type" ─────────────────────────────────
+// Classifies a gallery item by its `feasts[]` into one of six buckets shown
+// as group headers when the user sorts by type. First-match wins, so an icon
+// that covers both a Lord feast and a Theotokos feast (rare) lands under Lord.
+const ICON_CATEGORIES = [
+    {
+        key: 'lord', label: 'Pán Boh',
+        feasts: new Set([
+            'nativity', 'theophany', 'meeting-of-lord', 'palm-sunday', 'pascha',
+            'ascension', 'pentecost', 'transfiguration', 'exaltation-cross',
+            'mid-pentecost', 'holy-friday', 'holy-saturday'
+        ])
+    },
+    {
+        key: 'theotokos', label: 'Presvätá Bohorodička',
+        feasts: new Set([
+            'annunciation', 'dormition', 'nativity-theotokos',
+            'entry-theotokos', 'pokrov', 'synaxis-theotokos'
+        ])
+    },
+    {
+        key: 'triodion', label: 'Triodion (obdobie pôstu)',
+        feasts: new Set([
+            'sunday-publican-pharisee', 'sunday-prodigal-son', 'sunday-meatfare',
+            'sunday-cheesefare', 'sunday-orthodoxy', 'sunday-gregory-palamas',
+            'sunday-cross', 'sunday-john-climacus', 'sunday-mary-egypt',
+            'lazarus-saturday'
+        ])
+    },
+    {
+        key: 'pentekostarion', label: 'Pentekostárion (paschálne obdobie)',
+        feasts: new Set([
+            'thomas-sunday', 'sunday-myrrhbearers', 'sunday-paralytic',
+            'sunday-samaritan', 'sunday-blind-man', 'sunday-fathers-council',
+            'sunday-all-saints', 'sunday-russian-saints'
+        ])
+    }
+    // 'saint' and 'other' are computed as fallbacks, not matched here.
+];
+
+function categoryForIcon(icon) {
+    const feasts = (icon.feasts || []);
+    for (const cat of ICON_CATEGORIES) {
+        if (feasts.some(f => cat.feasts.has(f))) return cat.key;
+    }
+    // Any icon whose feast matches a FIXED (date-keyed) entry in the calendar
+    // is a saint commemoration; everything else is "other" (parables, standalone
+    // Christ scenes, themes without a date).
+    if (feasts.some(f => orthodoxCalendar.FIXED.some(fx => fx.id === f))) return 'saint';
+    return 'other';
+}
+
+// Ordering of type-groups when sorting by type. Display order mirrors the
+// liturgical-importance hierarchy.
+const CATEGORY_GROUP_ORDER = [
+    { key: 'lord',           label: 'Pán Boh' },
+    { key: 'theotokos',      label: 'Presvätá Bohorodička' },
+    { key: 'triodion',       label: 'Triodion (obdobie pôstu)' },
+    { key: 'pentekostarion', label: 'Pentekostárion (paschálne obdobie)' },
+    { key: 'saint',          label: 'Svätí' },
+    { key: 'other',          label: 'Iné' }
+];
+
+// Resolve the canonical "primary feast date" for an icon in the reference
+// year, used to order the date-sort. Uses the icon's first feast id; returns
+// null if the icon has no feasts at all.
+function iconPrimaryDate(icon, referenceYear) {
+    if (!Array.isArray(icon.feasts) || !icon.feasts.length) return null;
+    return orthodoxCalendar.dateForFeast(icon.feasts[0], referenceYear, state.calendarStyle);
+}
+
+function compareIconsByName(a, b) {
+    return String(a.name || '').localeCompare(String(b.name || ''), 'sk', { sensitivity: 'base' });
+}
+
+// Date-sort: undated icons sink to the bottom (tie-break by name). Within a
+// year the order is Jan → Dec, which matches how the liturgical year reads.
+function compareIconsByDate(a, b, referenceYear) {
+    const da = iconPrimaryDate(a, referenceYear);
+    const db = iconPrimaryDate(b, referenceYear);
+    if (!da && !db) return compareIconsByName(a, b);
+    if (!da) return 1;
+    if (!db) return -1;
+    return da - db;
 }
 
 // Slovak short date format: "7.4." — day.month. (with trailing period).
@@ -1073,9 +1225,11 @@ function initializeEventListeners() {
         });
     });
 
-    // Gallery search
+    // Gallery search + sort
     const gsearch = document.getElementById('gallerySearch');
     if (gsearch) gsearch.addEventListener('input', (e) => onGallerySearchInput(e.target.value));
+    const gsort = document.getElementById('gallerySort');
+    if (gsort) gsort.addEventListener('change', (e) => onGallerySortChange(e.target.value));
 
     // Delegated click handling on the gallery grid: item click → select, delete
     // button click → remove. Avoids inline onclick(id) that would be fragile

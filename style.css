@@ -1796,6 +1796,98 @@ body.week-locked .fasting-mode-label {
     flex-shrink: 0;
 }
 
+/* Sort dropdown. Styled to match the search input pill so the toolbar reads
+   as a single visual row of inputs. */
+.gallery-sort-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    background: var(--dark-bg);
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    flex: 0 0 auto;
+}
+
+.gallery-sort-label:focus-within {
+    border-color: var(--primary-blue);
+    box-shadow: 0 0 0 3px rgba(65, 105, 225, 0.2);
+}
+
+.gallery-sort-icon {
+    color: var(--text-gray);
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+#gallerySort {
+    padding: 10px 4px 10px 0;
+    background: transparent;
+    border: none;
+    color: var(--text-light);
+    font-size: 0.92rem;
+    font-family: inherit;
+    cursor: pointer;
+    min-width: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    /* Custom chevron on the right */
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4 6l4 4 4-4' stroke='%23a8b2d1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' fill='none'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 0 center;
+    background-size: 14px 14px;
+    padding-right: 22px;
+}
+
+#gallerySort:focus {
+    outline: none;
+}
+
+#gallerySort option {
+    background: var(--card-bg);
+    color: var(--text-light);
+}
+
+/* Type-grouped layout inside the "Všetky ikony" section */
+.gallery-type-group {
+    margin-top: 18px;
+}
+
+.gallery-type-group:first-of-type {
+    margin-top: 8px;
+}
+
+.gallery-type-heading {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text-light);
+    margin: 0 0 10px;
+    padding: 4px 0 6px;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+    letter-spacing: 0.02em;
+}
+
+.gallery-type-count {
+    color: var(--text-gray);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.78rem;
+}
+
+@media (max-width: 560px) {
+    .gallery-sort-label {
+        flex: 1 1 100%;
+    }
+
+    #gallerySort {
+        flex: 1 1 auto;
+    }
+}
+
 /* ── Gallery sections (Recommended + Všetky) ───────────────────────────── */
 /* Sections stack vertically with a horizontal rule between — a clear visual
    break between "this week's recommendations" and the full library. */
