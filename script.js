@@ -1902,12 +1902,12 @@ function measureScheduleHeight(sizes, scale) {
         const events = state.events[day];
         const feastName = state.feasts[day];
         const isEmpty = events.length === 0 && !feastName;
-        const pillH = (isEmpty ? 50 : 80) * scale;
+        const pillH = (isEmpty ? sizes.pillHEmpty : sizes.pillH) * scale;
 
         let rowH = pillH;
         if (!isEmpty) {
             const itemCount = events.length + (feastName ? 1 : 0);
-            const boxH = Math.max(80 * scale, itemCount * lineHeight + sizes.bottomPad * scale);
+            const boxH = Math.max(sizes.pillH * scale, itemCount * lineHeight + sizes.bottomPad * scale);
             rowH = Math.max(pillH, boxH);
         }
         totalH += rowH + dayPadding;
@@ -1916,7 +1916,20 @@ function measureScheduleHeight(sizes, scale) {
 }
 
 function drawSchedule(ctx, canvas, scale) {
-    const sizes = { dateFont: 90, eventFont: 38, feastFont: 22, topPad: 40, bottomPad: 25 };
+    const sizes = { dateFont: 90, eventFont: 38, feastFont: 22 };
+
+    // All pill/box values derived proportionally from eventFont so they shrink together.
+    // topPad = pillH / 2 always, keeping day-name baseline and first-event baseline aligned.
+    function syncDerived() {
+        const r = sizes.eventFont / 38;
+        sizes.dayFont    = Math.round(28 * r);
+        sizes.pillH      = Math.round(80 * r);
+        sizes.pillHEmpty = Math.round(50 * r);
+        sizes.topPad     = Math.round(40 * r); // = pillH / 2
+        sizes.bottomPad  = Math.round(25 * r);
+    }
+    syncDerived();
+
     const available = canvas.height - 20 * scale;
 
     while (sizes.dateFont > 50 && measureScheduleHeight(sizes, scale) > available) {
@@ -1926,11 +1939,7 @@ function drawSchedule(ctx, canvas, scale) {
     while (sizes.eventFont > 28 && measureScheduleHeight(sizes, scale) > available) {
         sizes.eventFont -= 2;
         sizes.feastFont = Math.max(20, sizes.feastFont - 1);
-    }
-
-    while ((sizes.topPad > 20 || sizes.bottomPad > 10) && measureScheduleHeight(sizes, scale) > available) {
-        sizes.topPad = Math.max(20, sizes.topPad - 2);
-        sizes.bottomPad = Math.max(10, sizes.bottomPad - 2);
+        syncDerived();
     }
 
     if (measureScheduleHeight(sizes, scale) > available) {
@@ -1978,14 +1987,14 @@ function drawDayRow(ctx, day, y, canvas, scale, sizes) {
     const pillW = 200 * scale;
     // Make pill smaller for empty days
     const isEmpty = events.length === 0 && !feastName;
-    const pillH = isEmpty ? 50 * scale : 80 * scale;
+    const pillH = (isEmpty ? sizes.pillHEmpty : sizes.pillH) * scale;
 
     ctx.fillStyle = colorState.pillBg;
     ctx.beginPath();
     ctx.roundRect(pillX, y, pillW, pillH, 40 * scale);
     ctx.fill();
 
-    ctx.font = `bold ${28 * scale}px "Outfit", sans-serif`;
+    ctx.font = `bold ${sizes.dayFont * scale}px "Outfit", sans-serif`;
     ctx.fillStyle = colorState.pillTextColor;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -2033,7 +2042,7 @@ function drawDayRow(ctx, day, y, canvas, scale, sizes) {
         // Calculate box height based on items
         let itemCount = events.length;
         if (feastName) itemCount += 1;
-        const boxH = Math.max(80 * scale, itemCount * lineHeight + sizes.bottomPad * scale);
+        const boxH = Math.max(sizes.pillH * scale, itemCount * lineHeight + sizes.bottomPad * scale);
 
         ctx.fillStyle = colorState.boxBg;
         ctx.beginPath();
