@@ -1907,7 +1907,7 @@ function measureScheduleHeight(sizes, scale) {
         let rowH = pillH;
         if (!isEmpty) {
             const itemCount = events.length + (feastName ? 1 : 0);
-            const boxH = Math.max(80 * scale, itemCount * lineHeight + 25 * scale);
+            const boxH = Math.max(80 * scale, itemCount * lineHeight + sizes.bottomPad * scale);
             rowH = Math.max(pillH, boxH);
         }
         totalH += rowH + dayPadding;
@@ -1916,7 +1916,7 @@ function measureScheduleHeight(sizes, scale) {
 }
 
 function drawSchedule(ctx, canvas, scale) {
-    const sizes = { dateFont: 90, eventFont: 38, feastFont: 22 };
+    const sizes = { dateFont: 90, eventFont: 38, feastFont: 22, topPad: 40, bottomPad: 25 };
     const available = canvas.height - 20 * scale;
 
     while (sizes.dateFont > 50 && measureScheduleHeight(sizes, scale) > available) {
@@ -1926,6 +1926,11 @@ function drawSchedule(ctx, canvas, scale) {
     while (sizes.eventFont > 28 && measureScheduleHeight(sizes, scale) > available) {
         sizes.eventFont -= 2;
         sizes.feastFont = Math.max(20, sizes.feastFont - 1);
+    }
+
+    while ((sizes.topPad > 20 || sizes.bottomPad > 10) && measureScheduleHeight(sizes, scale) > available) {
+        sizes.topPad = Math.max(20, sizes.topPad - 2);
+        sizes.bottomPad = Math.max(10, sizes.bottomPad - 2);
     }
 
     if (measureScheduleHeight(sizes, scale) > available) {
@@ -2028,14 +2033,14 @@ function drawDayRow(ctx, day, y, canvas, scale, sizes) {
         // Calculate box height based on items
         let itemCount = events.length;
         if (feastName) itemCount += 1;
-        const boxH = Math.max(80 * scale, itemCount * lineHeight + 25 * scale);
+        const boxH = Math.max(80 * scale, itemCount * lineHeight + sizes.bottomPad * scale);
 
         ctx.fillStyle = colorState.boxBg;
         ctx.beginPath();
         ctx.roundRect(boxX, y, boxW, boxH, 25 * scale);
         ctx.fill();
 
-        let textY = y + 40 * scale;
+        let textY = y + sizes.topPad * scale;
 
         // Draw Feast Name if present
         if (feastName) {
