@@ -1305,6 +1305,21 @@ const sync = (() => {
                 dirtySettings.add('calendarStyle');
             }
 
+            // Reload current week into top-level state BEFORE persisting so
+            // localStorage captures the merged-from-server values, not the
+            // stale pre-merge ones. (Functionally benign because
+            // loadFromLocalStorage re-derives top-level fields from the
+            // archive on next load, but keeps the cache internally consistent.)
+            if (touchedCurrentWeek && curKey && hasArchiveEntry(curKey)) {
+                loadWeekFromArchive(curKey);
+                updateUI();
+                renderDayDetails();
+                renderWeekFeastHints();
+                updatePreview();
+                document.getElementById('fastingMode').checked = state.fastingMode;
+                applyLockState();
+            }
+
             // Persist merged state to offline cache — write directly to avoid
             // triggering the "Uložené" toast (user made no edit) or a redundant
             // sync schedule from inside flushSaveToLocalStorage.
@@ -1323,16 +1338,6 @@ const sync = (() => {
                 };
                 localStorage.setItem('markovce-rozpis-state', JSON.stringify(stateToSave));
             } catch (_) {}
-
-            // Reload current week in UI if server had a newer copy
-            if (touchedCurrentWeek && curKey && hasArchiveEntry(curKey)) {
-                loadWeekFromArchive(curKey);
-                updateUI();
-                renderDayDetails();
-                renderWeekFeastHints();
-                document.getElementById('fastingMode').checked = state.fastingMode;
-                applyLockState();
-            }
 
             setStatus('synced');
             if (dirtyWeeks.size || dirtySettings.size) scheduleFlush();
