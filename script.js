@@ -2098,39 +2098,94 @@ function drawIcon(ctx, canvas, scale) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
+// Ratios preserve original pixel values exactly at default font sizes (50px / 45px at 38px event font)
+const LINE_HEIGHT_RATIO = 50 / 38;
+
+function measureScheduleHeight(sizes, scale) {
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const startY = (180 + sizes.dateFont) * scale;
+    const dayPadding = 8 * scale;
+    const lineHeight = sizes.eventFont * LINE_HEIGHT_RATIO * scale;
+
+    let totalH = startY;
+    days.forEach(day => {
+        const events = state.events[day];
+        const feastName = state.feasts[day];
+        const isEmpty = events.length === 0 && !feastName;
+        const pillH = (isEmpty ? sizes.pillHEmpty : sizes.pillH) * scale;
+
+        let rowH = pillH;
+        if (!isEmpty) {
+            const itemCount = events.length + (feastName ? 1 : 0);
+            const boxH = Math.max(sizes.pillH * scale, itemCount * lineHeight + sizes.bottomPad * scale);
+            rowH = Math.max(pillH, boxH);
+        }
+        totalH += rowH + dayPadding;
+    });
+    return totalH;
+}
+
 function drawSchedule(ctx, canvas, scale) {
-    drawHeader(ctx, canvas, scale);
+    const sizes = { dateFont: 90, eventFont: 38 };
+
+    // All pill/box values derived proportionally from eventFont so they shrink together.
+    // topPad = pillH / 2 always, keeping day-name baseline and first-event baseline aligned.
+    function syncDerived() {
+        const r = sizes.eventFont / 38;
+        sizes.dayFont    = Math.round(28 * r);
+        sizes.pillH      = Math.round(80 * r);
+        sizes.pillHEmpty = Math.round(50 * r);
+        sizes.topPad     = Math.round(40 * r); // = pillH / 2
+        sizes.bottomPad  = Math.round(25 * r);
+    }
+    syncDerived();
+
+    const available = canvas.height - 20 * scale;
+
+    while (sizes.dateFont > 50 && measureScheduleHeight(sizes, scale) > available) {
+        sizes.dateFont -= 2;
+    }
+
+    while (sizes.eventFont > 28 && measureScheduleHeight(sizes, scale) > available) {
+        sizes.eventFont -= 2;
+        syncDerived();
+    }
+
+    if (measureScheduleHeight(sizes, scale) > available) {
+        console.warn(`Schedule overflows by ${(measureScheduleHeight(sizes, scale) - available).toFixed(0)}px at minimum font sizes`);
+    }
+
+    drawHeader(ctx, canvas, scale, sizes);
 
     const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-    const startY = 270 * scale; // Reduced from 320 to bring days closer to headline
-    const dayPadding = 8 * scale; // Reduced padding between days for more compact layout
+    const startY = (180 + sizes.dateFont) * scale;
+    const dayPadding = 8 * scale;
 
     let currentY = startY;
-
     days.forEach((day) => {
-        const dayHeight = drawDayRow(ctx, day, currentY, canvas, scale);
+        const dayHeight = drawDayRow(ctx, day, currentY, canvas, scale, sizes);
         currentY += dayHeight + dayPadding;
     });
 }
 
-function drawHeader(ctx, canvas, scale) {
+function drawHeader(ctx, canvas, scale, sizes) {
     // Title (Top Left)
     ctx.font = `800 ${48 * scale}px "Outfit", sans-serif`;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
     ctx.fillText('Pravoslávni Markovce', 70 * scale, 80 * scale);
 
-    // Dates (Large White)
+    // Dates (Large White) — baseline at (100 + dateFont) scales with font so the gap to startY stays fixed at 80 design units
     const end = new Date(state.currentWeekStart);
     end.setDate(end.getDate() + 6);
 
     const dateText = `${state.currentWeekStart.getDate()}. – ${end.getDate()}. ${monthNames[end.getMonth()]}`;
 
-    ctx.font = `900 ${90 * scale}px "Outfit", sans-serif`; // Reduced from 120
+    ctx.font = `900 ${sizes.dateFont * scale}px "Outfit", sans-serif`;
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(dateText, 70 * scale, 190 * scale); // Adjusted baseline from 200 to 190
+    ctx.fillText(dateText, 70 * scale, (100 + sizes.dateFont) * scale);
 }
 
-function drawDayRow(ctx, day, y, canvas, scale) {
+function drawDayRow(ctx, day, y, canvas, scale, sizes) {
     const dayName = dayNames[day];
     const events = state.events[day];
     const feastName = state.feasts[day];
@@ -2141,14 +2196,14 @@ function drawDayRow(ctx, day, y, canvas, scale) {
     const pillW = 200 * scale;
     // Make pill smaller for empty days
     const isEmpty = events.length === 0 && !feastName;
-    const pillH = isEmpty ? 50 * scale : 80 * scale;
+    const pillH = (isEmpty ? sizes.pillHEmpty : sizes.pillH) * scale;
 
     ctx.fillStyle = colorState.pillBg;
     ctx.beginPath();
     ctx.roundRect(pillX, y, pillW, pillH, 40 * scale);
     ctx.fill();
 
-    ctx.font = `bold ${28 * scale}px "Outfit", sans-serif`;
+    ctx.font = `bold ${sizes.dayFont * scale}px "Outfit", sans-serif`;
     ctx.fillStyle = colorState.pillTextColor;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -2166,13 +2221,13 @@ function drawDayRow(ctx, day, y, canvas, scale) {
         let maxTextWidth = 0;
 
         // Font sizes for measurement
-        const feastFont = `700 ${22 * scale}px "Outfit", sans-serif`;
-        const boldEventFont = `bold ${38 * scale}px "Outfit", sans-serif`;
-        const normalEventFont = `600 ${38 * scale}px "Outfit", sans-serif`;
+        const boldEventFont = `bold ${sizes.eventFont * scale}px "Outfit", sans-serif`;
+        const normalEventFont = `600 ${sizes.eventFont * scale}px "Outfit", sans-serif`;
+        const lineHeight = sizes.eventFont * LINE_HEIGHT_RATIO * scale;
 
-        // Measure Feast Name
+        // Measure Feast Name (same font size as events)
         if (feastName) {
-            ctx.font = feastFont;
+            ctx.font = boldEventFont;
             maxTextWidth = Math.max(maxTextWidth, ctx.measureText('☦ ' + feastName.toUpperCase()).width);
         }
 
@@ -2194,21 +2249,21 @@ function drawDayRow(ctx, day, y, canvas, scale) {
         // Calculate box height based on items
         let itemCount = events.length;
         if (feastName) itemCount += 1;
-        const boxH = Math.max(80 * scale, itemCount * 50 * scale + 25 * scale);
+        const boxH = Math.max(sizes.pillH * scale, itemCount * lineHeight + sizes.bottomPad * scale);
 
         ctx.fillStyle = colorState.boxBg;
         ctx.beginPath();
         ctx.roundRect(boxX, y, boxW, boxH, 25 * scale);
         ctx.fill();
 
-        let textY = y + 40 * scale;
+        let textY = y + sizes.topPad * scale;
 
-        // Draw Feast Name if present
+        // Draw Feast Name if present (same size as events, same line height, same top padding)
         if (feastName) {
-            ctx.font = feastFont;
+            ctx.font = boldEventFont;
             ctx.fillStyle = colorState.feastColor;
             ctx.fillText('☦ ' + feastName.toUpperCase(), boxX + 25 * scale, textY);
-            textY += 45 * scale;
+            textY += lineHeight;
         }
 
         // Draw Events
@@ -2224,7 +2279,7 @@ function drawDayRow(ctx, day, y, canvas, scale) {
             ctx.fillStyle = colorState.textColor;
             ctx.fillText(textPart, boxX + 35 * scale + ctx.measureText(timePart).width, textY);
 
-            textY += 50 * scale;
+            textY += lineHeight;
         });
 
         // Update row height to be the maximum of pill height or box height
