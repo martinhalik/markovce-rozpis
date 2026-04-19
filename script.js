@@ -1889,7 +1889,6 @@ function drawIcon(ctx, canvas, scale) {
 
 // Ratios preserve original pixel values exactly at default font sizes (50px / 45px at 38px event font)
 const LINE_HEIGHT_RATIO = 50 / 38;
-const FEAST_LINE_RATIO = 45 / 38;
 
 function measureScheduleHeight(sizes, scale) {
     const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -1916,7 +1915,7 @@ function measureScheduleHeight(sizes, scale) {
 }
 
 function drawSchedule(ctx, canvas, scale) {
-    const sizes = { dateFont: 90, eventFont: 38, feastFont: 22 };
+    const sizes = { dateFont: 90, eventFont: 38 };
 
     // All pill/box values derived proportionally from eventFont so they shrink together.
     // topPad = pillH / 2 always, keeping day-name baseline and first-event baseline aligned.
@@ -1938,7 +1937,6 @@ function drawSchedule(ctx, canvas, scale) {
 
     while (sizes.eventFont > 28 && measureScheduleHeight(sizes, scale) > available) {
         sizes.eventFont -= 2;
-        sizes.feastFont = Math.max(20, sizes.feastFont - 1);
         syncDerived();
     }
 
@@ -2012,15 +2010,13 @@ function drawDayRow(ctx, day, y, canvas, scale, sizes) {
         let maxTextWidth = 0;
 
         // Font sizes for measurement
-        const feastFont = `700 ${sizes.feastFont * scale}px "Outfit", sans-serif`;
         const boldEventFont = `bold ${sizes.eventFont * scale}px "Outfit", sans-serif`;
         const normalEventFont = `600 ${sizes.eventFont * scale}px "Outfit", sans-serif`;
         const lineHeight = sizes.eventFont * LINE_HEIGHT_RATIO * scale;
-        const feastLineHeight = sizes.eventFont * FEAST_LINE_RATIO * scale;
 
-        // Measure Feast Name
+        // Measure Feast Name (same font size as events)
         if (feastName) {
-            ctx.font = feastFont;
+            ctx.font = boldEventFont;
             maxTextWidth = Math.max(maxTextWidth, ctx.measureText('☦ ' + feastName.toUpperCase()).width);
         }
 
@@ -2051,12 +2047,12 @@ function drawDayRow(ctx, day, y, canvas, scale, sizes) {
 
         let textY = y + sizes.topPad * scale;
 
-        // Draw Feast Name if present
+        // Draw Feast Name if present (same size as events, same line height, same top padding)
         if (feastName) {
-            ctx.font = feastFont;
+            ctx.font = boldEventFont;
             ctx.fillStyle = colorState.feastColor;
             ctx.fillText('☦ ' + feastName.toUpperCase(), boxX + 25 * scale, textY);
-            textY += feastLineHeight;
+            textY += lineHeight;
         }
 
         // Draw Events
