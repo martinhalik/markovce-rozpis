@@ -338,6 +338,7 @@ function snapshotCurrentWeekToArchive() {
         iconTransform: { ...state.iconTransform },
         updatedAt: Date.now()
     };
+    try { sync.markWeekDirty(key); } catch (_) {}
 }
 
 function hasArchiveEntry(weekKey) {
@@ -1079,6 +1080,7 @@ function flushSaveToLocalStorage() {
 
         localStorage.setItem('markovce-rozpis-state', JSON.stringify(stateToSave));
         showSavedToast();
+        try { sync.scheduleFlush(); } catch (_) {}
     } catch (error) {
         console.error('Error saving to localStorage:', error);
     }
@@ -1097,6 +1099,8 @@ function loadFromLocalStorage() {
         state.currentDay = parsed.currentDay || 'sunday';
         state.calendarStyle = parsed.calendarStyle === 'julian' ? 'julian' : 'antiochian';
         state.archive = parsed.archive && typeof parsed.archive === 'object' ? parsed.archive : {};
+        // Backfill updatedAt for archive entries created before sync was introduced
+        Object.values(state.archive).forEach(e => { if (!e.updatedAt) e.updatedAt = Date.now(); });
 
         // Restore week start date
         if (parsed.currentWeekStart) {
@@ -1149,6 +1153,204 @@ function loadFromLocalStorage() {
         return false;
     }
 }
+
+// ── Server sync ────────────────────────────────────────────────────────────
+// Keeps localStorage as offline cache. Syncs weeks and settings to/from
+// Vercel Postgres via /api/sync. Requires X-Parish-Key header seeded once
+// from ?key=... URL param. If the key is absent or the server is unreachable
+// the app works identically to the pre-sync version (pure offline).
+const sync = (() => {
+    const KEY_STORAGE = 'markovce-parish-key';
+    const COALESCE_MS = 2000;
+
+    let authKey = null;
+    const dirtyWeeks = new Set();
+    const dirtySettings = new Set();
+    let flushTimer = null;
+    let inFlight = false;
+
+    function captureKeyFromURL() {
+        try {
+            const url = new URL(window.location.href);
+            const k = url.searchParams.get('key');
+            if (k) {
+                localStorage.setItem(KEY_STORAGE, k);
+                url.searchParams.delete('key');
+                window.history.replaceState({}, '', url.toString());
+            }
+            authKey = localStorage.getItem(KEY_STORAGE);
+        } catch (_) {}
+    }
+
+    function hasKey() { return !!authKey; }
+    function authHeaders() { return authKey ? { 'X-Parish-Key': authKey } : {}; }
+
+    function setStatus(next) {
+        try {
+            const el = document.getElementById('syncStatus');
+            if (!el) return;
+            el.dataset.status = next;
+            const labels = {
+                synced:    '⇅ Synchronizované',
+                uploading: '↑ Nahráva sa',
+                offline:   '⚠ Bez spojenia',
+                hidden:    '',
+            };
+            el.textContent = labels[next] !== undefined ? labels[next] : '';
+        } catch (_) {}
+    }
+
+    function markWeekDirty(key) { if (key) dirtyWeeks.add(key); }
+    function markSettingDirty(k) { if (k) dirtySettings.add(k); }
+
+    function scheduleFlush() {
+        if (!hasKey()) return;
+        if (flushTimer) return;
+        flushTimer = setTimeout(() => { flushTimer = null; flushNow(); }, COALESCE_MS);
+    }
+
+    async function flushNow({ beacon = false } = {}) {
+        if (!hasKey()) return;
+        if (inFlight && !beacon) return;
+        const weekKeys = [...dirtyWeeks]; dirtyWeeks.clear();
+        const settingKeys = [...dirtySettings]; dirtySettings.clear();
+        if (!weekKeys.length && !settingKeys.length) { setStatus('synced'); return; }
+        inFlight = true;
+        setStatus('uploading');
+        try {
+            for (const k of weekKeys) {
+                const entry = state.archive[k];
+                if (!entry) continue;
+                const body = JSON.stringify({
+                    weekKey: k,
+                    payload: entry,
+                    updated_at: entry.updatedAt || Date.now(),
+                });
+                const r = await fetch('/api/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                    body,
+                    keepalive: beacon,
+                });
+                if (!r.ok) throw new Error('POST weeks ' + r.status);
+            }
+            for (const k of settingKeys) {
+                let value = null;
+                if (k === 'calendarStyle') value = state.calendarStyle;
+                const ts = Number(localStorage.getItem('markovce-settings-' + k + '-updatedAt') || Date.now());
+                const body = JSON.stringify({ settingsKey: k, value, updated_at: ts });
+                const r = await fetch('/api/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                    body,
+                    keepalive: beacon,
+                });
+                if (!r.ok) throw new Error('POST settings ' + r.status);
+            }
+            setStatus('synced');
+        } catch (_) {
+            weekKeys.forEach(k => dirtyWeeks.add(k));
+            settingKeys.forEach(k => dirtySettings.add(k));
+            setStatus('offline');
+        } finally {
+            inFlight = false;
+        }
+    }
+
+    async function bootstrap() {
+        captureKeyFromURL();
+        if (!hasKey()) { setStatus('hidden'); return; }
+        try {
+            const r = await fetch('/api/sync', { headers: authHeaders() });
+            if (!r.ok) throw new Error('GET ' + r.status);
+            const { weeks, settings } = await r.json();
+
+            const serverByKey = new Map((weeks || []).map(w => [w.weekKey, w]));
+            const localKeys = new Set(Object.keys(state.archive));
+            const curKey = state.currentWeekStart ? getWeekKey(state.currentWeekStart) : null;
+            let touchedCurrentWeek = false;
+
+            // Server → local: server wins if strictly newer
+            for (const [key, w] of serverByKey) {
+                const local = state.archive[key];
+                const localTs = (local && local.updatedAt) ? local.updatedAt : 0;
+                if (!local || w.updated_at > localTs) {
+                    state.archive[key] = { ...w.payload, updatedAt: w.updated_at };
+                    if (key === curKey) touchedCurrentWeek = true;
+                } else if (w.updated_at < localTs) {
+                    dirtyWeeks.add(key);
+                }
+            }
+
+            // Local-only keys: server doesn't have them → push
+            for (const key of localKeys) {
+                if (!serverByKey.has(key)) dirtyWeeks.add(key);
+            }
+
+            // Settings merge
+            const srvCalendar = settings && settings.calendarStyle;
+            const localCalTs = Number(localStorage.getItem('markovce-settings-calendarStyle-updatedAt') || 0);
+            if (srvCalendar) {
+                if (srvCalendar.updated_at > localCalTs) {
+                    const newVal = srvCalendar.value === 'julian' ? 'julian' : 'antiochian';
+                    if (newVal !== state.calendarStyle) {
+                        state.calendarStyle = newVal;
+                        localStorage.setItem('markovce-settings-calendarStyle-updatedAt', String(srvCalendar.updated_at));
+                        syncCalendarPickerUI();
+                    }
+                } else if (srvCalendar.updated_at < localCalTs) {
+                    dirtySettings.add('calendarStyle');
+                }
+            } else {
+                dirtySettings.add('calendarStyle');
+            }
+
+            // Reload current week into top-level state BEFORE persisting so
+            // localStorage captures the merged-from-server values, not the
+            // stale pre-merge ones. (Functionally benign because
+            // loadFromLocalStorage re-derives top-level fields from the
+            // archive on next load, but keeps the cache internally consistent.)
+            if (touchedCurrentWeek && curKey && hasArchiveEntry(curKey)) {
+                loadWeekFromArchive(curKey);
+                updateUI();
+                renderDayDetails();
+                renderWeekFeastHints();
+                updatePreview();
+                document.getElementById('fastingMode').checked = state.fastingMode;
+                applyLockState();
+            }
+
+            // Persist merged state to offline cache — write directly to avoid
+            // triggering the "Uložené" toast (user made no edit) or a redundant
+            // sync schedule from inside flushSaveToLocalStorage.
+            try {
+                const stateToSave = {
+                    currentDay: state.currentDay,
+                    currentWeekStart: state.currentWeekStart ? state.currentWeekStart.toISOString() : null,
+                    currentGalleryId: state.currentGalleryId,
+                    calendarStyle: state.calendarStyle,
+                    events: state.events,
+                    feasts: state.feasts,
+                    dayTypes: state.dayTypes,
+                    fastingMode: state.fastingMode,
+                    archive: state.archive,
+                    iconImageData: state._iconDataUrl || null,
+                };
+                localStorage.setItem('markovce-rozpis-state', JSON.stringify(stateToSave));
+            } catch (_) {}
+
+            setStatus('synced');
+            if (dirtyWeeks.size || dirtySettings.size) scheduleFlush();
+        } catch (_) {
+            setStatus('offline');
+        }
+    }
+
+    window.addEventListener('online',  () => { if (hasKey()) scheduleFlush(); });
+    window.addEventListener('offline', () => setStatus(hasKey() ? 'offline' : 'hidden'));
+
+    return { bootstrap, scheduleFlush, flushNow, markWeekDirty, markSettingDirty };
+})();
 
 // Day names in Slovak (matching the interface)
 const dayNames = {
@@ -1206,6 +1408,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // the debounce window — prevents a just-typed keystroke from being lost.
     window.addEventListener('pagehide', () => {
         if (_saveTimer) flushSaveToLocalStorage();
+        sync.flushNow({ beacon: true });
     });
 
     // Only load standard week if no saved events exist
@@ -1237,6 +1440,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // From this point onward, persisted edits trigger the "Uložené" toast.
     // (Suppressed during bootstrap so initial state restore doesn't flash it.)
     _appReady = true;
+
+    // Fire-and-forget: pull from server, merge, push any local-newer weeks.
+    // Never blocks UI — app works identically if this fails or key is absent.
+    sync.bootstrap();
 });
 
 function initializeEventListeners() {
@@ -1321,6 +1528,10 @@ function initializeEventListeners() {
             updatePreview();
             renderWeekFeastHints();
             saveToLocalStorage();
+            const calTs = Date.now();
+            localStorage.setItem('markovce-settings-calendarStyle-updatedAt', String(calTs));
+            sync.markSettingDirty('calendarStyle');
+            sync.scheduleFlush();
         });
     });
 

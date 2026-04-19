@@ -903,6 +903,28 @@ label.week-label {
     .saved-toast.visible { transform: none; }
 }
 
+/* ── Sync status indicator ──────────────────────────────────────────────── */
+.sync-status {
+    position: fixed;
+    bottom: 68px;
+    right: 24px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: white;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1900;
+    opacity: 0.88;
+    pointer-events: none;
+    transition: background 0.3s ease, opacity 0.3s ease;
+}
+
+.sync-status[data-status="synced"]    { background: #2ecc71; }
+.sync-status[data-status="uploading"] { background: #3498db; }
+.sync-status[data-status="offline"]   { background: #7f8c8d; opacity: 0.65; }
+.sync-status[data-status="hidden"]    { opacity: 0; }
+
 /* ── Past-week lock banner ──────────────────────────────────────────────── */
 .week-lock-banner {
     display: flex;
