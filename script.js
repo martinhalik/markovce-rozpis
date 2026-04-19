@@ -1887,11 +1887,15 @@ function drawIcon(ctx, canvas, scale) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
+// Ratios preserve original pixel values exactly at default font sizes (50px / 45px at 38px event font)
+const LINE_HEIGHT_RATIO = 50 / 38;
+const FEAST_LINE_RATIO = 45 / 38;
+
 function measureScheduleHeight(sizes, scale) {
     const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
     const startY = (180 + sizes.dateFont) * scale;
     const dayPadding = 8 * scale;
-    const lineHeight = sizes.eventFont * 1.32 * scale;
+    const lineHeight = sizes.eventFont * LINE_HEIGHT_RATIO * scale;
 
     let totalH = startY;
     days.forEach(day => {
@@ -1924,6 +1928,10 @@ function drawSchedule(ctx, canvas, scale) {
         sizes.feastFont = Math.max(20, sizes.feastFont - 1);
     }
 
+    if (measureScheduleHeight(sizes, scale) > available) {
+        console.warn(`Schedule overflows by ${(measureScheduleHeight(sizes, scale) - available).toFixed(0)}px at minimum font sizes`);
+    }
+
     drawHeader(ctx, canvas, scale, sizes);
 
     const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -1943,7 +1951,7 @@ function drawHeader(ctx, canvas, scale, sizes) {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
     ctx.fillText('Pravoslávni Markovce', 70 * scale, 80 * scale);
 
-    // Dates (Large White) — baseline at (100 + dateFont) keeps consistent spacing below title
+    // Dates (Large White) — baseline at (100 + dateFont) scales with font so the gap to startY stays fixed at 80 design units
     const end = new Date(state.currentWeekStart);
     end.setDate(end.getDate() + 6);
 
@@ -1993,8 +2001,8 @@ function drawDayRow(ctx, day, y, canvas, scale, sizes) {
         const feastFont = `700 ${sizes.feastFont * scale}px "Outfit", sans-serif`;
         const boldEventFont = `bold ${sizes.eventFont * scale}px "Outfit", sans-serif`;
         const normalEventFont = `600 ${sizes.eventFont * scale}px "Outfit", sans-serif`;
-        const lineHeight = sizes.eventFont * 1.32 * scale;
-        const feastLineHeight = sizes.eventFont * 1.18 * scale;
+        const lineHeight = sizes.eventFont * LINE_HEIGHT_RATIO * scale;
+        const feastLineHeight = sizes.eventFont * FEAST_LINE_RATIO * scale;
 
         // Measure Feast Name
         if (feastName) {
