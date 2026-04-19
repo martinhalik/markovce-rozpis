@@ -1503,12 +1503,15 @@ function initializeEventListeners() {
         saveToLocalStorage();
     });
 
-    // Week navigation
+    // Week navigation — blur any focused input first so in-progress keystrokes
+    // are committed to state before the snapshot runs.
     document.getElementById('prevWeek').addEventListener('click', () => {
+        document.activeElement?.blur();
         navigateWeeks(-1);
     });
 
     document.getElementById('nextWeek').addEventListener('click', () => {
+        document.activeElement?.blur();
         navigateWeeks(1);
     });
 
@@ -1637,6 +1640,7 @@ function initializeViewSwitcher() {
 }
 
 function jumpToThisWeek() {
+    document.activeElement?.blur();
     const today = new Date();
     const dow = today.getDay();
     const diff = today.getDate() - dow + (dow === 0 ? -6 : 1);
@@ -1660,8 +1664,7 @@ function jumpToThisWeek() {
     if (hasArchiveEntry(key)) {
         loadWeekFromArchive(key);
     } else {
-        // Clear last week's auto-filled feasts so they don't leak into today's.
-        clearAutoFilledFeasts();
+        resetFeastsForFreshWeek();
     }
     applyAutoIconPreselection();
     updateUI();
@@ -1697,9 +1700,9 @@ function navigateWeeks(deltaWeeks) {
             resetCurrentWeekToEmpty();
         } else {
             // Future / current week with no archive: keep events (as a template)
-            // but clear feast names that were auto-filled for the *previous* week
-            // so they don't leak into the new week. User-typed names survive.
-            clearAutoFilledFeasts();
+            // but fully reset feast names so nothing from the previous week leaks.
+            // The outgoing week was already snapshotted above, so no data is lost.
+            resetFeastsForFreshWeek();
         }
     }
 
@@ -1718,16 +1721,10 @@ function resetCurrentWeekToEmpty() {
     state.autoFilledFeasts = { monday: false, tuesday: false, wednesday: false, thursday: false, friday: false, saturday: false, sunday: false };
 }
 
-// Clear only feasts that were auto-filled (per autoFilledFeasts). Leaves user
-// edits alone. Used on fresh-week navigation so last week's auto names don't
-// bleed into this week.
-function clearAutoFilledFeasts() {
-    ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].forEach(day => {
-        if (state.autoFilledFeasts[day]) {
-            state.feasts[day] = '';
-            state.autoFilledFeasts[day] = false;
-        }
-    });
+function resetFeastsForFreshWeek() {
+    state.feasts = { monday: '', tuesday: '', wednesday: '', thursday: '', friday: '', saturday: '', sunday: '' };
+    state.autoFilledFeasts = { monday: false, tuesday: false, wednesday: false, thursday: false, friday: false, saturday: false, sunday: false };
+    autofillFeastNames();
 }
 
 function updateUI() {
@@ -2622,7 +2619,7 @@ function jumpToWeek(weekKey) {
         state.currentGalleryId = null;
         state.iconImage = null;
         state._iconDataUrl = null;
-        clearAutoFilledFeasts();
+        resetFeastsForFreshWeek();
     }
     applyAutoIconPreselection();
     saveToLocalStorage();
