@@ -89,6 +89,17 @@
     { "id": "saint-irenaeus-of-lyons", "name": "St. Irenaeus of Lyons", "file": "saint-irenaeus-of-lyons.jpeg", "feasts": ["st-irenaeus"], "description": "Sv. Irenej Lyonský, otec Cirkvi a mučeník." },
     { "id": "saint-liliana", "name": "St. Liliana the Martyr", "file": "saint-liliana.jpeg", "feasts": ["st-liliana"], "description": "Sv. mučeníčka Liliána." },
     { "id": "st-gabriel-urgebadze", "name": "St. Gabriel Urgebadze of Georgia", "file": "st-gabriel-urgebadze.jpg", "feasts": ["st-gabriel-urgebadze"], "description": "Sv. Gabriel (Urgebadze) Gruzínsky, Blázon pre Krista." },
-    { "id": "saint-vladislav-of-serbia", "name": "St. Vladislav of Serbia", "file": "saint-vladislav-of-serbia.jpg", "feasts": ["st-vladislav"], "description": "Sv. knieža Vladislav Srbský." }
+    { "id": "saint-vladislav-of-serbia", "name": "St. Vladislav of Serbia", "file": "saint-vladislav-of-serbia.jpg", "feasts": ["st-vladislav"], "description": "Sv. knieža Vladislav Srbský." },
+
+    { "id": "all-saints", "name": "All Saints Sunday", "file": "all-saints.jpeg", "feasts": ["sunday-all-saints"], "description": "Nedeľa všetkých svätých. 1. nedeľa po Päťdesiatnici." },
+    { "id": "all-saints-of-russia", "name": "All Saints of Russia", "file": "all-saints-of-russia.webp", "feasts": ["sunday-all-saints-russia"], "description": "Všetci svätí ruskej zeme. 2. nedeľa po Päťdesiatnici." },
+    { "id": "exaltation-of-the-cross", "name": "Exaltation of the Holy Cross", "file": "exaltation-of-the-cross.jpg", "feasts": ["exaltation-cross"], "description": "Povýšenie Svätého Kríža Pána." },
+    { "id": "sunday-of-paralytic", "name": "Sunday of the Paralytic", "file": "sunday-of-paralytic.jpg", "feasts": ["sunday-paralytic"], "description": "Uzdravenie ochrnutého pri Rybníku Betezda. 4. nedeľa po Pasche." },
+    { "id": "sunday-samaritan-woman", "name": "Sunday of the Samaritan Woman", "file": "sunday-samaritan-woman.webp", "feasts": ["sunday-samaritan-woman"], "description": "Ježiš a Samaritánka pri studni. 5. nedeľa po Pasche." },
+    { "id": "st-philip-apostle", "name": "St. Philip the Apostle", "file": "st-philip-apostle.jpg", "feasts": ["st-philip"], "description": "Sv. apoštol Filip." },
+    { "id": "st-bartholomew-apostle", "name": "St. Bartholomew the Apostle", "file": "st-bartholomew-apostle.jpg", "feasts": ["st-bartholomew"], "description": "Sv. apoštol Bartolomej." },
+    { "id": "st-matthew-apostle", "name": "St. Matthew the Apostle and Evangelist", "file": "st-matthew-apostle.jpg", "feasts": ["st-matthew"], "description": "Sv. apoštol a evanjelista Matúš." },
+    { "id": "st-simon-zealot", "name": "St. Simon the Zealot", "file": "st-simon-zealot.jpg", "feasts": ["st-simon"], "description": "Sv. apoštol Šimon Horlivec." },
+    { "id": "saint-jude-apostle", "name": "St. Jude (Thaddaeus) the Apostle", "file": "saint-jude-apostle.jpg", "feasts": ["st-jude", "st-thaddaeus"], "description": "Sv. apoštol Júda Tadeáš." }
   ]
 }
