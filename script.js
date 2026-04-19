@@ -1921,7 +1921,7 @@ function drawSchedule(ctx, canvas, scale) {
 
     while (sizes.eventFont > 28 && measureScheduleHeight(sizes, scale) > available) {
         sizes.eventFont -= 2;
-        sizes.feastFont = Math.max(16, sizes.feastFont - 1);
+        sizes.feastFont = Math.max(20, sizes.feastFont - 1);
     }
 
     drawHeader(ctx, canvas, scale, sizes);
