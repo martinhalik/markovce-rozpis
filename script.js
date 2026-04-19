@@ -1640,7 +1640,6 @@ function initializeViewSwitcher() {
 }
 
 function jumpToThisWeek() {
-    document.activeElement?.blur();
     const today = new Date();
     const dow = today.getDay();
     const diff = today.getDate() - dow + (dow === 0 ? -6 : 1);
@@ -1650,6 +1649,7 @@ function jumpToThisWeek() {
 
     if (getWeekKey(monday) === currentWeekKey()) return; // already there
 
+    document.activeElement?.blur();
     snapshotCurrentWeekToArchive();
     state.currentWeekStart = monday;
     // A week we haven't seen yet starts with a fresh "auto" icon slot so the
