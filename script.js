@@ -370,6 +370,13 @@ function loadWeekFromArchive(weekKey) {
         state.iconImage = null;
         state._iconDataUrl = null;
     }
+    // Scrub feast data against the current calendar. Auto-filled entries get
+    // refreshed. "Manual" entries on days where the calendar has no feast at all
+    // are almost certainly feast names that leaked from another week via the
+    // pre-fix bug — clear them. Custom text typed by the user on a calendar-empty
+    // day would be lost, but that's an edge case and preferable to showing the
+    // wrong feast every week.
+    scrubFeastsAgainstCalendar();
     return true;
 }
 
@@ -506,6 +513,34 @@ function autofillFeastNames() {
             // for this day — clear the stale auto text instead of stranding it.
             state.feasts[day] = '';
             state.autoFilledFeasts[day] = false;
+        }
+    });
+}
+
+// Called after loading a week from archive. Combines two passes:
+// 1. Refresh auto-filled feast names (flag=true) from the current calendar so
+//    stale names from a calendar-style change don't persist in old archive entries.
+// 2. Clear "user-typed" feast names (flag=false) on days where the calendar has
+//    no primary feast at all — those are leaked names from another week saved by
+//    the pre-fix bug, not intentional custom entries.
+function scrubFeastsAgainstCalendar() {
+    if (!state.currentWeekStart) return;
+    const byDay = orthodoxCalendar.feastsForWeek(state.currentWeekStart, state.calendarStyle);
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    days.forEach(day => {
+        const calEntry = byDay[day];
+        const hasCalFeast = !!(calEntry && calEntry.primary);
+        const wasAuto = !!state.autoFilledFeasts[day];
+        if (wasAuto) {
+            if (hasCalFeast) {
+                state.feasts[day] = calEntry.primary.name;
+            } else {
+                state.feasts[day] = '';
+                state.autoFilledFeasts[day] = false;
+            }
+        } else if (state.feasts[day] && !hasCalFeast) {
+            // Non-empty "manual" feast on a calendar-empty day: leaked from another week.
+            state.feasts[day] = '';
         }
     });
 }
