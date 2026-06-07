@@ -370,12 +370,8 @@ function loadWeekFromArchive(weekKey) {
         state.iconImage = null;
         state._iconDataUrl = null;
     }
-    // Scrub feast data against the current calendar. Auto-filled entries get
-    // refreshed. "Manual" entries on days where the calendar has no feast at all
-    // are almost certainly feast names that leaked from another week via the
-    // pre-fix bug — clear them. Custom text typed by the user on a calendar-empty
-    // day would be lost, but that's an edge case and preferable to showing the
-    // wrong feast every week.
+    // Refresh auto-filled feast names against the current calendar style.
+    // User-typed feasts are preserved verbatim — see scrubFeastsAgainstCalendar.
     scrubFeastsAgainstCalendar();
     return true;
 }
@@ -408,6 +404,13 @@ let gallerySearch = '';
 // category headers). Applies only to the "Všetky ikony" section; the
 // "Odporúčané" section always shows at the top regardless of sort.
 let gallerySort = 'name';
+// Monotonic counter incremented by every icon-load attempt (selectFromGallery,
+// loadIconById, handleIconUpload, legacy restore in loadFromLocalStorage). The
+// async Image.onload checks the captured generation against the current one
+// and discards itself if newer load has been started — prevents a slow earlier
+// load from clobbering a faster later one (e.g., week navigation racing the
+// initial bootstrap restore).
+let _iconLoadGeneration = 0;
 
 // loadGallery is async so bootstrap can wait for the manifest before it tries to
 // auto-preselect an icon (which needs the feast→icon mapping).
@@ -517,12 +520,13 @@ function autofillFeastNames() {
     });
 }
 
-// Called after loading a week from archive. Combines two passes:
-// 1. Refresh auto-filled feast names (flag=true) from the current calendar so
-//    stale names from a calendar-style change don't persist in old archive entries.
-// 2. Clear "user-typed" feast names (flag=false) on days where the calendar has
-//    no primary feast at all — those are leaked names from another week saved by
-//    the pre-fix bug, not intentional custom entries.
+// Called after loading a week from archive. Refreshes auto-filled feast names
+// (flag=true) against the current calendar so stale names from a calendar-style
+// change don't persist in old archive entries. User-typed feast names (flag=false)
+// are preserved as-is — even on days the calendar doesn't surface a feast for,
+// because they may be legitimate custom commemorations (e.g., a family name day,
+// a parish patron). The pre-archive bug that leaked names across weeks is gone,
+// so we no longer need to silently clear "manual" entries.
 function scrubFeastsAgainstCalendar() {
     if (!state.currentWeekStart) return;
     const byDay = orthodoxCalendar.feastsForWeek(state.currentWeekStart, state.calendarStyle);
@@ -531,16 +535,12 @@ function scrubFeastsAgainstCalendar() {
         const calEntry = byDay[day];
         const hasCalFeast = !!(calEntry && calEntry.primary);
         const wasAuto = !!state.autoFilledFeasts[day];
-        if (wasAuto) {
-            if (hasCalFeast) {
-                state.feasts[day] = calEntry.primary.name;
-            } else {
-                state.feasts[day] = '';
-                state.autoFilledFeasts[day] = false;
-            }
-        } else if (state.feasts[day] && !hasCalFeast) {
-            // Non-empty "manual" feast on a calendar-empty day: leaked from another week.
+        if (!wasAuto) return; // User-typed: leave alone.
+        if (hasCalFeast) {
+            state.feasts[day] = calEntry.primary.name;
+        } else {
             state.feasts[day] = '';
+            state.autoFilledFeasts[day] = false;
         }
     });
 }
@@ -1007,8 +1007,10 @@ function selectFromGallery(id) {
     // Reset per-week transform when switching icons; otherwise the old pan/zoom
     // gets applied to the new image (common source of confusion).
     state.iconTransform = { scale: 1, offsetX: 0, offsetY: 0 };
+    const gen = ++_iconLoadGeneration;
     const img = new Image();
     img.onload = () => {
+        if (gen !== _iconLoadGeneration) return; // superseded by a later load
         state.iconImage = img;
         state._iconDataUrl = item.src; // cache so we don't re-encode on every save
         updatePreview();
@@ -1016,6 +1018,7 @@ function selectFromGallery(id) {
         refreshEditIconBtnState();
     };
     img.onerror = () => {
+        if (gen !== _iconLoadGeneration) return;
         // Decode failed — undo the selection rather than leaving half-applied
         // state behind.
         state.currentGalleryId = null;
@@ -1035,7 +1038,9 @@ function loadIconById(id) {
     if (!item) {
         // Referenced id no longer exists (e.g. the user deleted their uploaded
         // icon). Clear any stale selection so the preview doesn't keep the old
-        // icon around.
+        // icon around. Bump the generation so any in-flight earlier load is
+        // dropped instead of slipping in after this clear.
+        _iconLoadGeneration++;
         state.currentGalleryId = null;
         state.iconImage = null;
         state._iconDataUrl = null;
@@ -1044,14 +1049,17 @@ function loadIconById(id) {
         return false;
     }
     state.currentGalleryId = id;
+    const gen = ++_iconLoadGeneration;
     const img = new Image();
     img.onload = () => {
+        if (gen !== _iconLoadGeneration) return;
         state.iconImage = img;
         state._iconDataUrl = item.src;
         updatePreview();
         refreshEditIconBtnState();
     };
     img.onerror = () => {
+        if (gen !== _iconLoadGeneration) return;
         state.currentGalleryId = null;
         state.iconImage = null;
         state._iconDataUrl = null;
@@ -1166,8 +1174,10 @@ function loadFromLocalStorage() {
 
         // Restore icon image (legacy path — only if nothing from archive took it)
         if (parsed.iconImageData && !archiveOwnsIcon) {
+            const gen = ++_iconLoadGeneration;
             const img = new Image();
             img.onload = () => {
+                if (gen !== _iconLoadGeneration) return;
                 state.iconImage = img;
                 state._iconDataUrl = parsed.iconImageData;
                 updatePreview();
@@ -1203,6 +1213,9 @@ const sync = (() => {
     const dirtySettings = new Set();
     let flushTimer = null;
     let inFlight = false;
+    // Re-entry guard for bootstrap: protects against the online listener and
+    // an initial bootstrap firing at the same time and double-merging.
+    let bootstrapInFlight = false;
 
     function captureKeyFromURL() {
         try {
@@ -1295,11 +1308,20 @@ const sync = (() => {
     async function bootstrap() {
         captureKeyFromURL();
         if (!hasKey()) { setStatus('hidden'); return; }
+        if (bootstrapInFlight) return;
+        bootstrapInFlight = true;
         try {
             const r = await fetch('/api/sync', { headers: authHeaders() });
             if (!r.ok) throw new Error('GET ' + r.status);
             const { weeks, settings } = await r.json();
 
+            // Pending debounced edit? Flush + snapshot now so the merge sees
+            // the freshest local timestamps and doesn't risk overwriting an
+            // unsaved keystroke with an older server payload.
+            if (_saveTimer) flushSaveToLocalStorage();
+            snapshotCurrentWeekToArchive();
+
+            const prevCalendarStyle = state.calendarStyle;
             const serverByKey = new Map((weeks || []).map(w => [w.weekKey, w]));
             const localKeys = new Set(Object.keys(state.archive));
             const curKey = state.currentWeekStart ? getWeekKey(state.currentWeekStart) : null;
@@ -1339,20 +1361,36 @@ const sync = (() => {
             } else {
                 dirtySettings.add('calendarStyle');
             }
+            const calendarStyleChanged = (prevCalendarStyle !== state.calendarStyle);
 
             // Reload current week into top-level state BEFORE persisting so
             // localStorage captures the merged-from-server values, not the
             // stale pre-merge ones. (Functionally benign because
             // loadFromLocalStorage re-derives top-level fields from the
             // archive on next load, but keeps the cache internally consistent.)
+            let refreshedCurrentWeek = false;
             if (touchedCurrentWeek && curKey && hasArchiveEntry(curKey)) {
                 loadWeekFromArchive(curKey);
+                refreshedCurrentWeek = true;
                 updateUI();
                 renderDayDetails();
                 renderWeekFeastHints();
                 updatePreview();
                 document.getElementById('fastingMode').checked = state.fastingMode;
                 applyLockState();
+            }
+            if (calendarStyleChanged && !refreshedCurrentWeek) {
+                // Server didn't bring a newer payload for this week, but the
+                // calendar style swapped — auto-filled feast labels and the
+                // recommended icon are calendar-dependent, so refresh them in
+                // place. User-typed feast names and manually-picked icons are
+                // preserved by autofillFeastNames/autoPickWeekIcon.
+                autofillFeastNames();
+                autoPickWeekIcon();
+                renderDayDetails();
+                renderWeekFeastHints();
+                updatePreview();
+                snapshotCurrentWeekToArchive();
             }
 
             // Persist merged state to offline cache — write directly to avoid
@@ -1378,10 +1416,15 @@ const sync = (() => {
             if (dirtyWeeks.size || dirtySettings.size) scheduleFlush();
         } catch (_) {
             setStatus('offline');
+        } finally {
+            bootstrapInFlight = false;
         }
     }
 
-    window.addEventListener('online',  () => { if (hasKey()) scheduleFlush(); });
+    // Coming back online: pull-merge-push instead of push-only. Without this,
+    // edits made by another device while we were offline never surface until
+    // the next page refresh.
+    window.addEventListener('online',  () => { if (hasKey()) bootstrap(); });
     window.addEventListener('offline', () => setStatus(hasKey() ? 'offline' : 'hidden'));
 
     return { bootstrap, scheduleFlush, flushNow, markWeekDirty, markSettingDirty };
@@ -1782,8 +1825,10 @@ function handleIconUpload(e) {
         state.currentGalleryId = id;
         state.iconManual = true;
         state.iconTransform = { scale: 1, offsetX: 0, offsetY: 0 };
+        const gen = ++_iconLoadGeneration;
         const img = new Image();
         img.onload = () => {
+            if (gen !== _iconLoadGeneration) return;
             state.iconImage = img;
             state._iconDataUrl = src; // cache so we don't re-encode on every save
             updatePreview();
@@ -1791,6 +1836,7 @@ function handleIconUpload(e) {
             refreshEditIconBtnState();
         };
         img.onerror = () => {
+            if (gen !== _iconLoadGeneration) return;
             state.currentGalleryId = null;
             alert('Nepodarilo sa načítať nahraný súbor.');
             refreshEditIconBtnState();
@@ -2298,13 +2344,19 @@ function drawDayRow(ctx, day, y, canvas, scale, sizes) {
             textY += lineHeight;
         }
 
-        // Draw Events
+        // Draw Events. Time color is chosen per event, not per day, so the
+        // schedule visually distinguishes liturgical worship (red) from
+        // preparatory or catechetical events (black) on the same day. Days
+        // marked as "Veľký sviatok" (celebration) override all event times to
+        // red — the whole day is a feast.
         events.forEach(event => {
             const timePart = event.split(' ')[0];
             const textPart = event.substring(timePart.length);
+            const eventIsImportant =
+                state.dayTypes[day] === 'celebration' || isImportantEventText(event);
 
             ctx.font = boldEventFont;
-            ctx.fillStyle = colorState.timeColor;
+            ctx.fillStyle = eventIsImportant ? colorState.importantTimeColor : colorState.normalTimeColor;
             ctx.fillText(timePart, boxX + 25 * scale, textY);
 
             ctx.font = normalEventFont;
@@ -2322,14 +2374,25 @@ function drawDayRow(ctx, day, y, canvas, scale, sizes) {
     return rowHeight;
 }
 
+// "Important" = a liturgical worship event: any liturgy (incl. presanctified),
+// vespers, compline (povečerie), matins (utiereň), or anything explicitly tagged
+// as a "sviatok". Used to color event times red and to pick a cream box bg.
+// Diacritic-tolerant so "vecern" matches "večerňa" too.
+const IMPORTANT_EVENT_RE =
+    /liturgia|\blit\.|večerň|vecern|povečer|povecer|utiereň|utieren|utreň|utren|sviatok/i;
+
+function isImportantEventText(eventText) {
+    return IMPORTANT_EVENT_RE.test(eventText || '');
+}
+
 function getDayState(day, events, feastName) {
     const dayType = state.dayTypes[day];
 
-    const hasImportant = feastName || events.some(e =>
-        e.toLowerCase().includes('liturgia') ||
-        e.toLowerCase().includes('navečerie') ||
-        e.toLowerCase().includes('sviatok')
-    );
+    // Day-level "has important" gates the box background and the feast-name
+    // color — both are per-day attributes. Per-event time coloring is handled
+    // in drawDayRow and uses isImportantEventText per event, so a Katechéza on
+    // a Liturgia day stays black instead of being painted red by association.
+    const hasImportant = !!feastName || events.some(isImportantEventText);
 
     // Pill Background based on day type
     let pillBg = '#F4D03F'; // Yellow for non-fasting (default)
@@ -2349,20 +2412,21 @@ function getDayState(day, events, feastName) {
     if (dayType === 'celebration' || hasImportant) boxBg = 'rgba(255, 250, 240, 0.95)'; // Cream/Goldish for important
     if (dayType === 'fasting' && !hasImportant) boxBg = 'rgba(243, 229, 245, 0.9)'; // Very light purple
 
-    // Colors for text elements
-    let timeColor = '#1a1a1a'; // Dark for normal days
+    // Feast-name color stays day-level: feast names are inherently the day's
+    // marquee item, so they pick up the same red as celebration days and days
+    // with at least one liturgical event.
     let feastColor = '#d87e1f'; // Orange/Gold for feast names
-
     if (dayType === 'celebration' || hasImportant) {
-        timeColor = '#b71c1c'; // Red for important events
-        feastColor = '#b71c1c'; // Red for important feasts
+        feastColor = '#b71c1c';
     }
 
     return {
         pillBg: pillBg,
         pillTextColor: pillTextColor,
         boxBg: boxBg,
-        timeColor: timeColor,
+        // Two time-color slots so drawDayRow can decide per-event which to use.
+        importantTimeColor: '#b71c1c',
+        normalTimeColor: '#1a1a1a',
         textColor: '#1a1a1a',
         feastColor: feastColor
     };
