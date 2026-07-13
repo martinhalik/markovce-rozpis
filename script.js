@@ -1389,7 +1389,7 @@ const sync = (() => {
 
 // Day names in Slovak (matching the interface)
 const dayNames = {
-    monday: 'PONDELÍ',
+    monday: 'PONDELOK',
     tuesday: 'UTOROK',
     wednesday: 'STREDA',
     thursday: 'ŠTVRTOK',
