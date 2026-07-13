@@ -240,9 +240,63 @@ const orthodoxCalendar = (function () {
     };
 })();
 
+// Default "Odporúčané služby" (recommended services) shortcuts. Users can add/remove
+// their own via the edit button; the customized list persists in localStorage under
+// REC_STORAGE_KEY. Each item: { event, label?, fasting? } — `event` is the text pushed
+// onto the day, `label` overrides the button caption (defaults to `event`).
+const DEFAULT_RECOMMENDATIONS = [
+    { event: '6:00 sv. Liturgia' },
+    { event: '7:00 sv. Liturgia' },
+    { event: '8:00 sv. Liturgia' },
+    { event: '9:00 sv. Liturgia' },
+    { event: '13:00 Nedeľná škola' },
+    { event: '14:00 Kačanov' },
+    { event: '16:00 Katechéza' },
+    { event: '16:00 Zemplínske Jastrabie' },
+    { event: '17:00 Veľká večerňa' },
+    { event: '17:00 Večerňa a spoveď' },
+    { event: '19:00 Veľké Povečerie' },
+    { event: '16:30 Liturgia vopred posv. darov', label: '16:30 Lit. vopred posv. darov', fasting: true }
+];
+const REC_STORAGE_KEY = 'markovce-recommendations';
+// Whether the recommendations list is in edit mode (showing remove icons + add input).
+let recEditMode = false;
+
+function loadRecommendations() {
+    try {
+        const saved = localStorage.getItem(REC_STORAGE_KEY);
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+                const cleaned = parsed
+                    .filter(r => r && typeof r.event === 'string' && r.event.trim())
+                    .map(r => ({
+                        event: r.event.trim(),
+                        label: typeof r.label === 'string' && r.label.trim() ? r.label.trim() : undefined,
+                        fasting: !!r.fasting
+                    }));
+                if (cleaned.length) return cleaned;
+            }
+        }
+    } catch (error) {
+        console.error('Error loading recommendations:', error);
+    }
+    return DEFAULT_RECOMMENDATIONS.map(r => ({ ...r }));
+}
+
+function saveRecommendations() {
+    try {
+        localStorage.setItem(REC_STORAGE_KEY, JSON.stringify(state.recommendations));
+    } catch (error) {
+        console.error('Error saving recommendations:', error);
+    }
+}
+
 // State management
 const state = {
     currentDay: 'sunday',
+    // User-customizable "Odporúčané služby" shortcut list (see DEFAULT_RECOMMENDATIONS).
+    recommendations: loadRecommendations(),
     iconImage: null,
     currentGalleryId: null,
     currentWeekStart: null,
@@ -1493,17 +1547,46 @@ function initializeEventListeners() {
         });
     });
 
-    // Recommendation buttons
-    document.querySelectorAll('.rec-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
+    // Recommendation buttons (delegated — the list is dynamic and editable).
+    // Normal mode: clicking a button adds its event to the current day.
+    // Edit mode: clicking a button's "×" removes it from the list.
+    const recContainer = document.getElementById('recommendations');
+    if (recContainer) {
+        recContainer.addEventListener('click', (e) => {
+            const btn = e.target.closest('.rec-btn');
+            if (!btn) return;
+            const index = Number(btn.dataset.index);
+            if (recEditMode) {
+                if (e.target.closest('.rec-remove')) {
+                    state.recommendations.splice(index, 1);
+                    saveRecommendations();
+                    renderRecommendations();
+                }
+                return; // non-remove clicks are inert while editing
+            }
             if (!guardEditable()) return;
-            const eventText = btn.dataset.event;
-            state.events[state.currentDay].push(eventText);
+            const rec = state.recommendations[index];
+            if (!rec) return;
+            state.events[state.currentDay].push(rec.event);
             renderDayDetails();
             updatePreview();
             saveToLocalStorage();
         });
-    });
+    }
+
+    // Edit toggle + add-new controls for the recommendations list
+    const recEditBtn = document.getElementById('recEditBtn');
+    if (recEditBtn) recEditBtn.addEventListener('click', toggleRecEditMode);
+    const recAddBtn = document.getElementById('recAddBtn');
+    if (recAddBtn) recAddBtn.addEventListener('click', addRecommendation);
+    const recAddInput = document.getElementById('recAddInput');
+    if (recAddInput) {
+        recAddInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); addRecommendation(); }
+        });
+    }
+
+    renderRecommendations();
 
     // Icon upload (main + gallery upload)
     document.getElementById('iconUpload').addEventListener('change', handleIconUpload);
@@ -1887,6 +1970,46 @@ function clearAllEvents() {
     renderDayDetails();
     updatePreview();
     saveToLocalStorage();
+}
+
+// Render the "Odporúčané služby" shortcut buttons from state.recommendations.
+// In edit mode each button gets a "×" remove icon and the add-input row is shown.
+function renderRecommendations() {
+    const container = document.getElementById('recommendations');
+    if (!container) return;
+    container.classList.toggle('recommendations--editing', recEditMode);
+    container.innerHTML = state.recommendations.map((rec, i) => {
+        const label = rec.label || rec.event;
+        const fastingClass = rec.fasting ? ' rec-btn--fasting' : '';
+        return `<button type="button" class="rec-btn${fastingClass}" data-index="${i}">`
+            + `<span class="rec-btn-label">${escapeHtml(label)}</span>`
+            + `<span class="rec-remove" title="Odstrániť" aria-label="Odstrániť">×</span>`
+            + `</button>`;
+    }).join('');
+}
+
+function addRecommendation() {
+    const input = document.getElementById('recAddInput');
+    const val = input.value.trim();
+    if (val && !state.recommendations.some(r => r.event === val)) {
+        state.recommendations.push({ event: val, fasting: false });
+        saveRecommendations();
+        renderRecommendations();
+    }
+    input.value = '';
+    input.focus();
+}
+
+function toggleRecEditMode() {
+    recEditMode = !recEditMode;
+    const editBtn = document.getElementById('recEditBtn');
+    if (editBtn) {
+        editBtn.classList.toggle('active', recEditMode);
+        editBtn.innerHTML = recEditMode ? '✓ Hotovo' : '✏️ Upraviť';
+    }
+    const addRow = document.getElementById('recAddRow');
+    if (addRow) addRow.hidden = !recEditMode;
+    renderRecommendations();
 }
 
 function renderDayDetails() {
