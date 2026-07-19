@@ -107,21 +107,14 @@
                 </section>
 
                 <section class="control-section">
-                    <h2>Odporúčané služby</h2>
-                    <div class="recommendations">
-                        <button class="rec-btn" data-event="6:00 sv. Liturgia">6:00 sv. Liturgia</button>
-                        <button class="rec-btn" data-event="7:00 sv. Liturgia">7:00 sv. Liturgia</button>
-                        <button class="rec-btn" data-event="8:00 sv. Liturgia">8:00 sv. Liturgia</button>
-                        <button class="rec-btn" data-event="9:00 sv. Liturgia">9:00 sv. Liturgia</button>
-                        <button class="rec-btn" data-event="13:00 Nedeľná škola">13:00 Nedeľná škola</button>
-                        <button class="rec-btn" data-event="14:00 Kačanov">14:00 Kačanov</button>
-                        <button class="rec-btn" data-event="16:00 Katechéza">16:00 Katechéza</button>
-                        <button class="rec-btn" data-event="16:00 Zemplínske Jastrabie">16:00 Zemplínske
-                            Jastrabie</button>
-                        <button class="rec-btn" data-event="17:00 Veľká večerňa">17:00 Veľká večerňa</button>
-                        <button class="rec-btn" data-event="17:00 Večerňa a spoveď">17:00 Večerňa a spoveď</button>
-                        <button class="rec-btn" data-event="19:00 Veľké Povečerie">19:00 Veľké Povečerie</button>
-                        <button class="rec-btn rec-btn--fasting" data-event="16:30 Liturgia vopred posv. darov">16:30 Lit. vopred posv. darov</button>
+                    <div class="section-header">
+                        <h2>Odporúčané služby</h2>
+                        <button id="recEditBtn" class="section-edit-btn" type="button" title="Upraviť odporúčané služby" aria-label="Upraviť odporúčané služby">✏️ Upraviť</button>
+                    </div>
+                    <div class="recommendations" id="recommendations"></div>
+                    <div class="rec-add-row" id="recAddRow" hidden>
+                        <input type="text" id="recAddInput" class="rec-add-input" placeholder="napr. 18:00 Akatist" maxlength="60">
+                        <button type="button" id="recAddBtn" class="rec-add-btn">➕ Pridať</button>
                     </div>
                 </section>
 

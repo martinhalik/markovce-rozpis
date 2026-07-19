@@ -386,6 +386,121 @@ label.week-label {
     box-shadow: 0 4px 15px rgba(65, 105, 225, 0.4);
 }
 
+.rec-btn {
+    position: relative;
+}
+
+/* Remove "×" badge — hidden until the list is in edit mode */
+.rec-remove {
+    display: none;
+}
+
+.recommendations--editing .rec-btn {
+    padding-right: 30px;
+    border-color: #e74c3c;
+    cursor: default;
+}
+
+.recommendations--editing .rec-btn:hover {
+    background: rgba(231, 76, 60, 0.12);
+    transform: none;
+    box-shadow: none;
+}
+
+.recommendations--editing .rec-remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #e74c3c;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.recommendations--editing .rec-remove:hover {
+    background: #c0392b;
+}
+
+/* Section header: title with an edit action on the right */
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.control-section .section-header h2 {
+    margin-bottom: 0;
+}
+
+.section-edit-btn {
+    padding: 6px 12px;
+    background: var(--dark-bg);
+    border: 2px solid var(--primary-blue);
+    border-radius: 8px;
+    color: var(--text-light);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.section-edit-btn:hover,
+.section-edit-btn.active {
+    background: var(--primary-blue);
+}
+
+/* Add-new row shown while editing the recommendations list */
+.rec-add-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+/* A class-level display rule would otherwise override the [hidden] attribute. */
+.rec-add-row[hidden] {
+    display: none;
+}
+
+.rec-add-input {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 12px;
+    background: var(--dark-bg);
+    border: 2px solid var(--primary-blue);
+    border-radius: 8px;
+    color: var(--text-light);
+    font-size: 0.9rem;
+}
+
+.rec-add-btn {
+    padding: 10px 15px;
+    background: var(--primary-blue);
+    border: 2px solid var(--primary-blue);
+    border-radius: 8px;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.rec-add-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(65, 105, 225, 0.4);
+}
+
 /* Day Editor */
 .day-selector {
     display: grid;
@@ -980,6 +1095,14 @@ body.week-locked .recommendations,
 body.week-locked .add-event-btn {
     opacity: 0.5;
     pointer-events: none;
+}
+
+/* Editing the personal recommendations list stays available even when the
+   week is locked — it's a device-local shortcut list, not week content. */
+body.week-locked .recommendations--editing,
+body.week-locked .rec-add-row {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 body.week-locked .event-item--locked {
