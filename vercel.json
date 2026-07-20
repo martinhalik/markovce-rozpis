@@ -1,3 +1,7 @@
 {
-  "version": 2
+  "version": 2,
+  "rewrites": [
+    { "source": "/kalendar.ics", "destination": "/api/calendar" },
+    { "source": "/calendar.ics", "destination": "/api/calendar" }
+  ]
 }
