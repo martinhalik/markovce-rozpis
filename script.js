@@ -376,9 +376,29 @@ function currentWeekKey() {
     return getWeekKey(state.currentWeekStart);
 }
 
-function snapshotCurrentWeekToArchive() {
+// A sentinel timestamp for archive entries that were never actually edited on
+// this device (a week materialised only so it can appear in stats). It is
+// deliberately tiny so that any genuine `updated_at` from another device — which
+// is always a real `Date.now()` in the ~1e12 range — beats it during the sync
+// merge, and so a passive snapshot can never make the server pull a blank week.
+const PASSIVE_UPDATED_AT = 1;
+
+// `dirty` distinguishes a real user edit from a passive re-capture:
+//   • dirty (default): the user changed something on screen. Stamp `now` and
+//     mark the week for upload.
+//   • not dirty: startup, week navigation, or opening stats just re-persist the
+//     on-screen state into the offline cache. These must NOT invent a fresh
+//     timestamp — every real edit already went through saveToLocalStorage()
+//     (which snapshots synchronously), so the archive is up to date. If a passive
+//     snapshot stamped `Date.now()` it would look newer than a genuine edit that
+//     was synced from another device, and the next sync would push this device's
+//     stale copy over it — the exact "I write it on my phone, then it's gone when
+//     I open my Mac" bug. So preserve the existing timestamp; a brand-new week
+//     that this device has never seen gets the losing sentinel.
+function snapshotCurrentWeekToArchive({ dirty = true } = {}) {
     if (!state.currentWeekStart) return;
     const key = currentWeekKey();
+    const existing = state.archive[key];
     state.archive[key] = {
         events: JSON.parse(JSON.stringify(state.events)),
         feasts: { ...state.feasts },
@@ -390,9 +410,13 @@ function snapshotCurrentWeekToArchive() {
         iconGalleryId: state.currentGalleryId || null,
         iconManual: !!state.iconManual,
         iconTransform: { ...state.iconTransform },
-        updatedAt: Date.now()
+        updatedAt: dirty
+            ? Date.now()
+            : (existing && existing.updatedAt ? existing.updatedAt : PASSIVE_UPDATED_AT)
     };
-    try { sync.markWeekDirty(key); } catch (_) {}
+    if (dirty) {
+        try { sync.markWeekDirty(key); } catch (_) {}
+    }
 }
 
 function hasArchiveEntry(weekKey) {
@@ -1140,10 +1164,13 @@ function refreshEditIconBtnState() {
 const SAVE_DEBOUNCE_MS = 200;
 let _saveTimer = null;
 
-function saveToLocalStorage() {
+function saveToLocalStorage(opts = {}) {
     // Snapshot synchronously so in-memory archive is always current even if the
     // flush is delayed (important for openStats() which reads state.archive).
-    snapshotCurrentWeekToArchive();
+    // `dirty` defaults to true (a real edit); navigation passes { dirty: false }
+    // so that merely switching weeks persists the session pointer without
+    // stamping a fresh timestamp on — and re-uploading — an unedited week.
+    snapshotCurrentWeekToArchive(opts);
     if (_saveTimer) clearTimeout(_saveTimer);
     _saveTimer = setTimeout(flushSaveToLocalStorage, SAVE_DEBOUNCE_MS);
 }
@@ -1188,8 +1215,13 @@ function loadFromLocalStorage() {
         state.currentDay = parsed.currentDay || 'sunday';
         state.calendarStyle = parsed.calendarStyle === 'julian' ? 'julian' : 'antiochian';
         state.archive = parsed.archive && typeof parsed.archive === 'object' ? parsed.archive : {};
-        // Backfill updatedAt for archive entries created before sync was introduced
-        Object.values(state.archive).forEach(e => { if (!e.updatedAt) e.updatedAt = Date.now(); });
+        // Backfill updatedAt for archive entries created before sync was introduced.
+        // Their real age is unknown, so treat them as oldest (the losing sentinel)
+        // rather than stamping "now" — stamping now would make this device's cached
+        // copy look newer than a schedule edited on another device and overwrite it.
+        // A genuinely local-only legacy week is still uploaded via the local-only
+        // push in sync.bootstrap(), regardless of this timestamp.
+        Object.values(state.archive).forEach(e => { if (!e.updatedAt) e.updatedAt = PASSIVE_UPDATED_AT; });
 
         // Restore week start date
         if (parsed.currentWeekStart) {
@@ -1212,9 +1244,13 @@ function loadFromLocalStorage() {
             state.feasts = parsed.feasts || state.feasts;
             state.dayTypes = parsed.dayTypes || state.dayTypes;
             state.fastingMode = parsed.fastingMode || false;
-            // Migrate legacy single-week state into the archive so it counts toward stats
+            // Migrate legacy single-week state into the archive so it counts toward
+            // stats. Passive: this is load-time materialisation, not a fresh edit, so
+            // it must not out-stamp a newer copy synced from another device. If the
+            // server doesn't have this week yet it is still uploaded via the
+            // local-only push in sync.bootstrap().
             if (key && parsed.events) {
-                snapshotCurrentWeekToArchive();
+                snapshotCurrentWeekToArchive({ dirty: false });
             }
         }
 
@@ -1515,8 +1551,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Respects iconManual so returning users keep their chosen icons.
     applyAutoIconPreselection();
 
-    // Make sure the initial week is in the archive (so it shows in stats even before any edit)
-    snapshotCurrentWeekToArchive();
+    // Make sure the initial week is in the archive (so it shows in stats even
+    // before any edit). Passive: this must not stamp a fresh timestamp, or the
+    // sync below would treat this device's copy as newer than a schedule edited
+    // on another device and overwrite it.
+    snapshotCurrentWeekToArchive({ dirty: false });
 
     updateUI();
     // renderDayDetails has to run after autofill so the feast input for the
@@ -1768,7 +1807,7 @@ function jumpToThisWeek() {
     if (getWeekKey(monday) === currentWeekKey()) return; // already there
 
     document.activeElement?.blur();
-    snapshotCurrentWeekToArchive();
+    snapshotCurrentWeekToArchive({ dirty: false });
     state.currentWeekStart = monday;
     // A week we haven't seen yet starts with a fresh "auto" icon slot so the
     // preselection can pick this week's feast icon. Archived weeks below
@@ -1790,12 +1829,14 @@ function jumpToThisWeek() {
     renderWeekFeastHints();
     document.getElementById('fastingMode').checked = state.fastingMode;
     applyLockState();
-    saveToLocalStorage();
+    // Passive: switching weeks is not an edit, so don't stamp/re-upload the
+    // week we just landed on (it may hold a newer edit synced from another device).
+    saveToLocalStorage({ dirty: false });
 }
 
 function navigateWeeks(deltaWeeks) {
     // Persist whatever is currently on screen under the current week key
-    snapshotCurrentWeekToArchive();
+    snapshotCurrentWeekToArchive({ dirty: false });
 
     // Move to the target week
     state.currentWeekStart.setDate(state.currentWeekStart.getDate() + deltaWeeks * 7);
@@ -1830,7 +1871,8 @@ function navigateWeeks(deltaWeeks) {
     renderWeekFeastHints();
     document.getElementById('fastingMode').checked = state.fastingMode;
     applyLockState();
-    saveToLocalStorage();
+    // Passive: navigation is not an edit (see jumpToThisWeek).
+    saveToLocalStorage({ dirty: false });
 }
 
 function resetCurrentWeekToEmpty() {
@@ -2743,8 +2785,9 @@ function computeStats(year) {
 }
 
 function openStats() {
-    // Flush current week into archive so today's edits count
-    snapshotCurrentWeekToArchive();
+    // Flush current week into archive so today's edits count. Passive: opening
+    // stats is not an edit, so it must not stamp/re-upload the current week.
+    snapshotCurrentWeekToArchive({ dirty: false });
     statsYear = new Date().getFullYear();
     renderStats();
     document.getElementById('statsModal').style.display = 'flex';
@@ -2767,7 +2810,7 @@ function formatWeekRange(start, end) {
 }
 
 function jumpToWeek(weekKey) {
-    snapshotCurrentWeekToArchive();
+    snapshotCurrentWeekToArchive({ dirty: false });
     state.currentWeekStart = parseWeekKey(weekKey);
     if (hasArchiveEntry(weekKey)) {
         loadWeekFromArchive(weekKey);
@@ -2780,7 +2823,8 @@ function jumpToWeek(weekKey) {
         resetFeastsForFreshWeek();
     }
     applyAutoIconPreselection();
-    saveToLocalStorage();
+    // Passive: jumping to a week from stats is not an edit (see jumpToThisWeek).
+    saveToLocalStorage({ dirty: false });
     updateUI();
     renderDayDetails();
     renderWeekFeastHints();
