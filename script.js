@@ -1,3 +1,16 @@
+// ── App version ────────────────────────────────────────────────────────────
+// Read from the `?v=` query on the <script> tag in index.html (which is also
+// what busts browser caches). Bump it in index.html on every deploy — the
+// footer shows it, so two devices can be compared at a glance.
+const APP_VERSION = (() => {
+    try {
+        const src = document.currentScript && document.currentScript.src;
+        return (src && new URL(src).searchParams.get('v')) || 'dev';
+    } catch (_) {
+        return 'dev';
+    }
+})();
+
 // ── Orthodox liturgical calendar ───────────────────────────────────────────
 // All Orthodox churches (Julian "starý" and Antiochian "nový") share the same
 // Paschalion (Pascha computed on the Julian calendar). The calendar style only
@@ -226,6 +239,48 @@ const orthodoxCalendar = (function () {
         return null;
     }
 
+    // Diacritic-insensitive, case-insensitive, whitespace-normalised text for
+    // comparing a typed feast name against the calendar's own names.
+    function foldName(text) {
+        return String(text || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    // Is `text` (a feast name stored for `date`) a calendar feast name that does
+    // NOT belong on that date? Used to recognise names that leaked from another
+    // week (the "Pascha on an ordinary Sunday" bug) without touching genuinely
+    // custom text such as a parish feast ("Odpust").
+    //   • Anything mentioning Pascha is a leak outside Bright Week (Pascha + 6
+    //     days). Pascha is never transferred to another date.
+    //   • A movable feast's exact name on a day that movable feast does not fall
+    //     on is a leak — movable feasts are date-bound by definition.
+    //   • A fixed feast's exact name on a day with no calendar feast at all is a
+    //     leak. (On a day that has some other feast it is kept, so a parish can
+    //     still transfer e.g. St. Nicholas onto a Sunday that commemorates
+    //     another saint.)
+    function looksLikeLeakedFeastName(text, date, calendarStyle) {
+        const folded = foldName(text);
+        if (!folded) return false;
+        const onDate = feastsOnDate(date, calendarStyle);
+        if (folded.includes('pascha') && !folded.includes('antipascha')) {
+            for (const yearOffset of [-1, 0, 1]) {
+                const p = computePascha(date.getFullYear() + yearOffset);
+                const diff = Math.round((addDays(date, 0) - p) / 86400000);
+                if (diff >= 0 && diff <= 6) return false; // Bright Week
+            }
+            return true;
+        }
+        const movable = MOVABLE.find(f => foldName(f.name) === folded);
+        if (movable) return !onDate.some(f => f.id === movable.id);
+        const fixed = FIXED.find(f => foldName(f.name) === folded);
+        if (fixed) return onDate.length === 0;
+        return false;
+    }
+
     return {
         computePascha,
         feastsOnDate,
@@ -233,6 +288,7 @@ const orthodoxCalendar = (function () {
         primaryFeast,
         feastRank,
         dateForFeast,
+        looksLikeLeakedFeastName,
         MAJOR_MOVABLE,
         TWELVE_GREAT_FIXED,
         MOVABLE,
@@ -598,9 +654,12 @@ function autofillFeastNames() {
 // Called after loading a week from archive. Combines two passes:
 // 1. Refresh auto-filled feast names (flag=true) from the current calendar so
 //    stale names from a calendar-style change don't persist in old archive entries.
-// 2. Clear "user-typed" feast names (flag=false) on days where the calendar has
-//    no primary feast at all — those are leaked names from another week saved by
-//    the pre-fix bug, not intentional custom entries.
+// 2. Clear "user-typed" feast names (flag=false) that are really calendar feast
+//    names belonging to a different date — e.g. "Pascha" on an October Sunday.
+//    Such entries were written by older app versions that carried feast names
+//    across weeks (and may still arrive via sync from a device running an old
+//    cached build). Genuinely custom text is left alone; see
+//    orthodoxCalendar.looksLikeLeakedFeastName for the exact rules.
 function scrubFeastsAgainstCalendar() {
     if (!state.currentWeekStart) return;
     const byDay = orthodoxCalendar.feastsForWeek(state.currentWeekStart, state.calendarStyle);
@@ -616,8 +675,8 @@ function scrubFeastsAgainstCalendar() {
                 state.feasts[day] = '';
                 state.autoFilledFeasts[day] = false;
             }
-        } else if (state.feasts[day] && !hasCalFeast) {
-            // Non-empty "manual" feast on a calendar-empty day: leaked from another week.
+        } else if (state.feasts[day]
+            && orthodoxCalendar.looksLikeLeakedFeastName(state.feasts[day], calEntry.date, state.calendarStyle)) {
             state.feasts[day] = '';
         }
     });
@@ -1104,10 +1163,28 @@ function selectFromGallery(id) {
     closeGallery();
 }
 
+// Bumped every time the week's icon slot is reset. Async image loads that
+// started before a reset compare against it and drop their result, so an icon
+// from the week we just left can't land on the week we navigated to.
+let _iconGeneration = 0;
+
+// Put the icon slot back into "auto" mode for a week we have no archive for,
+// so autoPickWeekIcon can choose this week's feast icon instead of carrying
+// over whatever the previous week showed.
+function resetWeekIconToAuto() {
+    _iconGeneration++;
+    state.iconManual = false;
+    state.iconTransform = { scale: 1, offsetX: 0, offsetY: 0 };
+    state.currentGalleryId = null;
+    state.iconImage = null;
+    state._iconDataUrl = null;
+}
+
 // Load an icon by id without touching iconManual. Used when restoring a week's
 // archived icon or applying an auto-preselection. Returns true only if a matching
 // gallery item was found; the actual image decode is async (and may still fail —
-// onerror clears the partial state).
+// onerror clears the partial state). If the selection changed while the image
+// was decoding (week navigation, icon reset), the result is discarded.
 function loadIconById(id) {
     const item = galleryImages.find(i => i.id === id);
     if (!item) {
@@ -1122,14 +1199,18 @@ function loadIconById(id) {
         return false;
     }
     state.currentGalleryId = id;
+    const generation = _iconGeneration;
+    const stillCurrent = () => generation === _iconGeneration && state.currentGalleryId === id;
     const img = new Image();
     img.onload = () => {
+        if (!stillCurrent()) return;
         state.iconImage = img;
         state._iconDataUrl = item.src;
         updatePreview();
         refreshEditIconBtnState();
     };
     img.onerror = () => {
+        if (!stillCurrent()) return;
         state.currentGalleryId = null;
         state.iconImage = null;
         state._iconDataUrl = null;
@@ -1256,8 +1337,12 @@ function loadFromLocalStorage() {
 
         // Restore icon image (legacy path — only if nothing from archive took it)
         if (parsed.iconImageData && !archiveOwnsIcon) {
+            const generation = _iconGeneration;
             const img = new Image();
             img.onload = () => {
+                // Dropped if the icon slot was reset meanwhile (e.g. the app
+                // opened on a different week than the one this image belongs to).
+                if (generation !== _iconGeneration) return;
                 state.iconImage = img;
                 state._iconDataUrl = parsed.iconImageData;
                 updatePreview();
@@ -1319,10 +1404,27 @@ const sync = (() => {
                 synced:    '⇅ Synchronizované',
                 uploading: '↑ Nahráva sa',
                 offline:   '⚠ Bez spojenia',
+                // No parish key on this device (never seeded, or the browser
+                // cleared site storage). Shown — not hidden — because a silently
+                // non-syncing device is exactly how two devices drift apart.
+                nokey:     '⚠ Bez synchronizácie – zadať kľúč',
                 hidden:    '',
             };
             el.textContent = labels[next] !== undefined ? labels[next] : '';
+            el.title = next === 'nokey'
+                ? 'Toto zariadenie nemá synchronizačný kľúč. Kliknutím ho zadáte.'
+                : '';
         } catch (_) {}
+    }
+
+    // Let the user seed the key by hand (tap the status pill) when it's missing.
+    function promptForKey() {
+        if (hasKey()) return;
+        const k = window.prompt('Zadajte synchronizačný kľúč farnosti:');
+        if (!k || !k.trim()) return;
+        try { localStorage.setItem(KEY_STORAGE, k.trim()); } catch (_) {}
+        authKey = k.trim();
+        bootstrap();
     }
 
     function markWeekDirty(key) { if (key) dirtyWeeks.add(key); }
@@ -1382,13 +1484,25 @@ const sync = (() => {
         }
     }
 
+    // Pull from the server and merge (server wins only if strictly newer), then
+    // push anything local-newer. Runs on page load and again whenever the app
+    // comes back into view (see below) so a tab/home-screen app left open on
+    // one device picks up edits made on another instead of showing days-old
+    // state until the next full reload.
+    let pulling = false;
+    let lastPullAt = 0;
+
     async function bootstrap() {
         captureKeyFromURL();
-        if (!hasKey()) { setStatus('hidden'); return; }
+        if (!hasKey()) { setStatus('nokey'); return; }
+        if (pulling) return;
+        pulling = true;
         try {
-            const r = await fetch('/api/sync', { headers: authHeaders() });
+            // no-store: never let Safari/iOS hand back a cached copy of the feed.
+            const r = await fetch('/api/sync', { headers: authHeaders(), cache: 'no-store' });
             if (!r.ok) throw new Error('GET ' + r.status);
             const { weeks, settings } = await r.json();
+            lastPullAt = Date.now();
 
             const serverByKey = new Map((weeks || []).map(w => [w.weekKey, w]));
             const localKeys = new Set(Object.keys(state.archive));
@@ -1468,11 +1582,34 @@ const sync = (() => {
             if (dirtyWeeks.size || dirtySettings.size) scheduleFlush();
         } catch (_) {
             setStatus('offline');
+        } finally {
+            pulling = false;
         }
     }
 
-    window.addEventListener('online',  () => { if (hasKey()) scheduleFlush(); });
-    window.addEventListener('offline', () => setStatus(hasKey() ? 'offline' : 'hidden'));
+    // Re-pull when the app regains focus, but not more often than this.
+    const RESUME_PULL_MIN_MS = 15 * 1000;
+    // And while it stays visible, re-pull periodically.
+    const PERIODIC_PULL_MS = 5 * 60 * 1000;
+
+    function pullIfStale() {
+        if (!hasKey()) return;
+        if (document.visibilityState !== 'visible') return;
+        if (Date.now() - lastPullAt < RESUME_PULL_MIN_MS) return;
+        bootstrap();
+    }
+
+    window.addEventListener('online',  () => { if (hasKey()) { scheduleFlush(); pullIfStale(); } });
+    window.addEventListener('offline', () => setStatus(hasKey() ? 'offline' : 'nokey'));
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pullIfStale(); });
+    // bfcache restore (iOS Safari back/forward, home-screen apps) skips DOMContentLoaded.
+    window.addEventListener('pageshow', (e) => { if (e.persisted) pullIfStale(); });
+    setInterval(pullIfStale, PERIODIC_PULL_MS);
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const el = document.getElementById('syncStatus');
+        if (el) el.addEventListener('click', () => { if (el.dataset.status === 'nokey') promptForKey(); });
+    });
 
     return { bootstrap, scheduleFlush, flushNow, markWeekDirty, markSettingDirty };
 })();
@@ -1519,8 +1656,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (loaded && storedKey !== todaysKey) {
         if (hasArchiveEntry(todaysKey)) {
             loadWeekFromArchive(todaysKey);
+        } else {
+            // Keep the previous week's *events* as a template for today's week,
+            // but nothing else may carry over: feast names and the icon belong
+            // to the week they were entered for. This is the same reset week
+            // navigation does; without it a feast typed by hand (e.g. "Pascha")
+            // and that week's icon survived into every later week opened from
+            // this device, until something else overwrote them.
+            resetWeekIconToAuto();
+            resetFeastsForFreshWeek();
         }
-        // else keep the in-memory state as a template for today's week
     }
 
     initializeEventListeners();
@@ -1564,6 +1709,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyLockState();
     renderWeekFeastHints();
     refreshEditIconBtnState();
+
+    const versionEl = document.getElementById('appVersion');
+    if (versionEl) versionEl.textContent = 'Verzia ' + APP_VERSION;
 
     // From this point onward, persisted edits trigger the "Uložené" toast.
     // (Suppressed during bootstrap so initial state restore doesn't flash it.)
@@ -1812,11 +1960,7 @@ function jumpToThisWeek() {
     // A week we haven't seen yet starts with a fresh "auto" icon slot so the
     // preselection can pick this week's feast icon. Archived weeks below
     // reload iconManual/iconTransform from disk.
-    state.iconManual = false;
-    state.iconTransform = { scale: 1, offsetX: 0, offsetY: 0 };
-    state.currentGalleryId = null;
-    state.iconImage = null;
-    state._iconDataUrl = null;
+    resetWeekIconToAuto();
     const key = getWeekKey(monday);
     if (hasArchiveEntry(key)) {
         loadWeekFromArchive(key);
@@ -1848,11 +1992,7 @@ function navigateWeeks(deltaWeeks) {
     } else {
         // Fresh week — reset the icon to "auto" so preselection can run below,
         // rather than carrying over the previous week's chosen icon.
-        state.iconManual = false;
-        state.iconTransform = { scale: 1, offsetX: 0, offsetY: 0 };
-        state.currentGalleryId = null;
-        state.iconImage = null;
-        state._iconDataUrl = null;
+        resetWeekIconToAuto();
         if (isWeekFullyPast(state.currentWeekStart)) {
             // Past week with no archive — show empty so we don't pretend the
             // current-week program was actually used that week.
@@ -2815,11 +2955,7 @@ function jumpToWeek(weekKey) {
     if (hasArchiveEntry(weekKey)) {
         loadWeekFromArchive(weekKey);
     } else {
-        state.iconManual = false;
-        state.iconTransform = { scale: 1, offsetX: 0, offsetY: 0 };
-        state.currentGalleryId = null;
-        state.iconImage = null;
-        state._iconDataUrl = null;
+        resetWeekIconToAuto();
         resetFeastsForFreshWeek();
     }
     applyAutoIconPreselection();
