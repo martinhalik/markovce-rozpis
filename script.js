@@ -2603,13 +2603,19 @@ function drawDayRow(ctx, day, y, canvas, scale, sizes) {
             textY += lineHeight;
         }
 
-        // Draw Events
+        // Draw Events. Time color is chosen per event, not per day, so the
+        // schedule visually distinguishes liturgical worship (red) from
+        // preparatory or catechetical events (black) on the same day. Days
+        // marked as "Veľký sviatok" (celebration) override all event times to
+        // red — the whole day is a feast.
         events.forEach(event => {
             const timePart = event.split(' ')[0];
             const textPart = event.substring(timePart.length);
+            const eventIsImportant =
+                state.dayTypes[day] === 'celebration' || isImportantEventText(event);
 
             ctx.font = boldEventFont;
-            ctx.fillStyle = colorState.timeColor;
+            ctx.fillStyle = eventIsImportant ? colorState.importantTimeColor : colorState.normalTimeColor;
             ctx.fillText(timePart, boxX + 25 * scale, textY);
 
             ctx.font = normalEventFont;
@@ -2627,14 +2633,30 @@ function drawDayRow(ctx, day, y, canvas, scale, sizes) {
     return rowHeight;
 }
 
+// "Important" = a liturgical worship event: any liturgy (incl. presanctified,
+// and the parish's two location-based liturgies at Kačanov and Zemplínske
+// Jastrabie), vespers, compline (povečerie), matins (utiereň), or anything
+// explicitly tagged as a "sviatok". Used to color event times red and to pick
+// a cream box bg. Diacritic-tolerant so "vecern" matches "večerňa" too. The
+// old day-level check here read "navečerie" — a typo that never matched
+// anything, so povečerie events were silently misclassified as non-important.
+// Kačanov / Jastrabie are included to match how the stats panel categorizes
+// them under Liturgie — keeping the color story consistent with the counts.
+const IMPORTANT_EVENT_RE =
+    /liturgia|\blit\.|večerň|vecern|povečer|povecer|utiereň|utieren|utreň|utren|sviatok|kačanov|kacanov|jastrabie/i;
+
+function isImportantEventText(eventText) {
+    return IMPORTANT_EVENT_RE.test(eventText || '');
+}
+
 function getDayState(day, events, feastName) {
     const dayType = state.dayTypes[day];
 
-    const hasImportant = feastName || events.some(e =>
-        e.toLowerCase().includes('liturgia') ||
-        e.toLowerCase().includes('navečerie') ||
-        e.toLowerCase().includes('sviatok')
-    );
+    // Day-level "has important" gates the box background and the feast-name
+    // color — both are per-day attributes. Per-event time coloring is handled
+    // in drawDayRow and uses isImportantEventText per event, so a Katechéza on
+    // a Liturgia day stays black instead of being painted red by association.
+    const hasImportant = !!feastName || events.some(isImportantEventText);
 
     // Pill Background based on day type
     let pillBg = '#F4D03F'; // Yellow for non-fasting (default)
@@ -2654,20 +2676,21 @@ function getDayState(day, events, feastName) {
     if (dayType === 'celebration' || hasImportant) boxBg = 'rgba(255, 250, 240, 0.95)'; // Cream/Goldish for important
     if (dayType === 'fasting' && !hasImportant) boxBg = 'rgba(243, 229, 245, 0.9)'; // Very light purple
 
-    // Colors for text elements
-    let timeColor = '#1a1a1a'; // Dark for normal days
+    // Feast-name color stays day-level: feast names are inherently the day's
+    // marquee item, so they pick up the same red as celebration days and days
+    // with at least one liturgical event.
     let feastColor = '#d87e1f'; // Orange/Gold for feast names
-
     if (dayType === 'celebration' || hasImportant) {
-        timeColor = '#b71c1c'; // Red for important events
-        feastColor = '#b71c1c'; // Red for important feasts
+        feastColor = '#b71c1c';
     }
 
     return {
         pillBg: pillBg,
         pillTextColor: pillTextColor,
         boxBg: boxBg,
-        timeColor: timeColor,
+        // Two time-color slots so drawDayRow can decide per-event which to use.
+        importantTimeColor: '#b71c1c',
+        normalTimeColor: '#1a1a1a',
         textColor: '#1a1a1a',
         feastColor: feastColor
     };
