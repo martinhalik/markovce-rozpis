@@ -1237,6 +1237,24 @@ function refreshEditIconBtnState() {
 // initializeEventListeners — see the '.gallery-item-delete' branch there.
 // ───────────────────────────────────────────────────────────────────────────
 
+// ── Active parish ──────────────────────────────────────────────────────────
+// Which parish this device is working on, and its offline cache. Each parish
+// gets its own cache keys; Markovce keeps the original unsuffixed ones so
+// devices from before multi-parish support carry their data over. Fixed for
+// the page's lifetime — switching parish reloads (see sync.switchParish).
+const ACTIVE_PARISH_STORAGE = 'markovce-active-parish';
+const DEFAULT_PARISH = 'markovce';
+const ACTIVE_PARISH = (() => {
+    try { return localStorage.getItem(ACTIVE_PARISH_STORAGE) || DEFAULT_PARISH; } catch (_) { return DEFAULT_PARISH; }
+})();
+function parishStorageKey(base) {
+    return ACTIVE_PARISH === DEFAULT_PARISH ? base : `${base}@${ACTIVE_PARISH}`;
+}
+const STATE_STORAGE_KEY = parishStorageKey('markovce-rozpis-state');
+const CAL_TS_STORAGE_KEY = parishStorageKey('markovce-settings-calendarStyle-updatedAt');
+// Display name, remembered so the generated image is titled right offline too.
+const PARISH_NAME_STORAGE_KEY = parishStorageKey('markovce-parish-name');
+
 // LocalStorage functions
 //
 // Persistence is debounced: rapid edits (feast name keystrokes, drag reorders)
@@ -1251,7 +1269,11 @@ function saveToLocalStorage(opts = {}) {
     // `dirty` defaults to true (a real edit); navigation passes { dirty: false }
     // so that merely switching weeks persists the session pointer without
     // stamping a fresh timestamp on — and re-uploading — an unedited week.
+    const dirty = opts.dirty !== false;
+    const key = state.currentWeekStart ? currentWeekKey() : null;
+    const before = dirty && key ? state.archive[key] : undefined;
     snapshotCurrentWeekToArchive(opts);
+    if (dirty && key) undoHistory.recordEdit(key, before, state.archive[key]);
     if (_saveTimer) clearTimeout(_saveTimer);
     _saveTimer = setTimeout(flushSaveToLocalStorage, SAVE_DEBOUNCE_MS);
 }
@@ -1275,7 +1297,7 @@ function flushSaveToLocalStorage() {
             iconImageData: state._iconDataUrl || null
         };
 
-        localStorage.setItem('markovce-rozpis-state', JSON.stringify(stateToSave));
+        localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(stateToSave));
         showSavedToast();
         try { sync.scheduleFlush(); } catch (_) {}
     } catch (error) {
@@ -1283,9 +1305,114 @@ function flushSaveToLocalStorage() {
     }
 }
 
+// Re-render everything that shows the current week, after its data was
+// replaced wholesale (undo/redo, restoring a version, a newer copy synced in).
+function refreshCurrentWeekUI() {
+    updateUI();
+    renderDayDetails();
+    renderWeekFeastHints();
+    updatePreview();
+    document.getElementById('fastingMode').checked = state.fastingMode;
+    applyLockState();
+}
+
+// ── Undo / redo ────────────────────────────────────────────────────────────
+// Per-week stacks of earlier versions of the week, kept in memory for this
+// page (the server-side version history covers everything older). Every
+// real edit goes through saveToLocalStorage, which reports here with the
+// week as it was just before. Edits less than STEP_GAP_MS apart (typing a
+// feast name, dragging) form one step. Undo/redo apply a version as a normal
+// edit, so it is saved and synced like any other change.
+const undoHistory = (() => {
+    const STEP_GAP_MS = 1000;
+    const MAX_STEPS = 100;
+    const stacks = new Map(); // weekKey → { undo: [], redo: [], lastEditAt }
+    let applying = false;
+
+    const clone = (entry) => JSON.parse(JSON.stringify(entry));
+    // updatedAt changes on every save; it isn't part of what the user sees.
+    const sameContent = (a, b) => JSON.stringify({ ...a, updatedAt: 0 }) === JSON.stringify({ ...b, updatedAt: 0 });
+
+    function stackFor(key) {
+        if (!stacks.has(key)) stacks.set(key, { undo: [], redo: [], lastEditAt: 0 });
+        return stacks.get(key);
+    }
+
+    function recordEdit(key, before, after, { newStep = false } = {}) {
+        if (applying || !before || !after || sameContent(before, after)) return;
+        const st = stackFor(key);
+        const now = Date.now();
+        if (newStep || !st.undo.length || now - st.lastEditAt > STEP_GAP_MS) {
+            st.undo.push(clone(before));
+            if (st.undo.length > MAX_STEPS) st.undo.shift();
+        }
+        st.lastEditAt = now;
+        st.redo.length = 0;
+        renderButtons();
+    }
+
+    // A newer copy of the week arrived from another device: the old steps
+    // would silently revert someone else's changes, so drop them.
+    function forgetWeek(key) {
+        if (stacks.delete(key)) renderButtons();
+    }
+
+    function move(from, to) {
+        if (!state.currentWeekStart) return;
+        const key = currentWeekKey();
+        const st = stackFor(key);
+        if (!st[from].length) return;
+        if (sync.isReadOnly() || !guardEditable()) return;
+        const current = state.archive[key];
+        const target = st[from].pop();
+        if (current) st[to].push(clone(current));
+        st.lastEditAt = 0; // the next edit starts a new step
+        applying = true;
+        try {
+            state.archive[key] = { ...target, updatedAt: Date.now() };
+            loadWeekFromArchive(key);
+            refreshCurrentWeekUI();
+            saveToLocalStorage();
+        } finally {
+            applying = false;
+        }
+        renderButtons();
+    }
+
+    function renderButtons() {
+        const st = state.currentWeekStart ? stacks.get(currentWeekKey()) : null;
+        const readOnly = sync.isReadOnly();
+        const undoBtn = document.getElementById('undoBtn');
+        const redoBtn = document.getElementById('redoBtn');
+        if (undoBtn) undoBtn.disabled = readOnly || !(st && st.undo.length);
+        if (redoBtn) redoBtn.disabled = readOnly || !(st && st.redo.length);
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+        const k = e.key.toLowerCase();
+        const isUndo = k === 'z' && !e.shiftKey;
+        const isRedo = (k === 'z' && e.shiftKey) || (k === 'y' && !e.shiftKey);
+        if (!isUndo && !isRedo) return;
+        // Inside a text field the browser's own undo of the typing applies.
+        const t = e.target;
+        if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+        e.preventDefault();
+        if (isUndo) move('undo', 'redo'); else move('redo', 'undo');
+    });
+
+    return {
+        recordEdit,
+        forgetWeek,
+        renderButtons,
+        undo: () => move('undo', 'redo'),
+        redo: () => move('redo', 'undo'),
+    };
+})();
+
 function loadFromLocalStorage() {
     try {
-        const savedState = localStorage.getItem('markovce-rozpis-state');
+        const savedState = localStorage.getItem(STATE_STORAGE_KEY);
         if (!savedState) {
             return false;
         }
@@ -1365,35 +1492,61 @@ function loadFromLocalStorage() {
 }
 
 // ── Server sync ────────────────────────────────────────────────────────────
-// Keeps localStorage as offline cache. Syncs weeks and settings to/from
-// Vercel Postgres via /api/sync. Requires X-Parish-Key header seeded once
-// from ?key=... URL param. If the key is absent or the server is unreachable
-// the app works identically to the pre-sync version (pure offline).
+// Keeps localStorage as offline cache. Syncs the active parish's weeks and
+// settings to/from Vercel Postgres via /api/sync?parish=<slug>, authenticated
+// by the session cookie from "Sign in with Google" (/api/auth/login). What the
+// signed-in user may do comes from /api/me: viewers only pull (server copy
+// always wins, nothing is pushed), editors and admins pull and push. Signed
+// out, offline, or without access to the parish, the app works exactly as the
+// pre-sync version did (pure offline).
 const sync = (() => {
-    const KEY_STORAGE = 'markovce-parish-key';
     const COALESCE_MS = 2000;
+    // Pre-Google-sign-in shared parish key; no longer used.
+    const LEGACY_KEY_STORAGE = 'markovce-parish-key';
 
-    let authKey = null;
+    // { user, parishes: [{ slug, name, role }] } from /api/me; null = unknown.
+    let account = null;
+    // Role in the active parish, once known. Kept across a lost session so a
+    // viewer's UI doesn't briefly unlock.
+    let role = null;
     const dirtyWeeks = new Set();
     const dirtySettings = new Set();
     let flushTimer = null;
     let inFlight = false;
 
-    function captureKeyFromURL() {
+    const AUTH_ERRORS = {
+        state: 'Prihlásenie vypršalo alebo bolo prerušené. Skúste to znova.',
+        email: 'Tento Google účet nemá overený e-mail.',
+        server: 'Prihlásenie sa nepodarilo. Skúste to neskôr znova.',
+    };
+
+    // One-shot URL cleanup on load: drop an old `?key=` sync link and report
+    // a failed sign-in coming back from /api/auth/callback.
+    function consumeURLParams() {
         try {
+            localStorage.removeItem(LEGACY_KEY_STORAGE);
             const url = new URL(window.location.href);
-            const k = url.searchParams.get('key');
-            if (k) {
-                localStorage.setItem(KEY_STORAGE, k);
-                url.searchParams.delete('key');
-                window.history.replaceState({}, '', url.toString());
-            }
-            authKey = localStorage.getItem(KEY_STORAGE);
+            const authError = url.searchParams.get('auth_error');
+            if (!url.searchParams.has('key') && !authError) return;
+            url.searchParams.delete('key');
+            url.searchParams.delete('auth_error');
+            window.history.replaceState({}, '', url.toString());
+            if (authError) setTimeout(() => alert(AUTH_ERRORS[authError] || AUTH_ERRORS.server), 0);
         } catch (_) {}
     }
 
-    function hasKey() { return !!authKey; }
-    function authHeaders() { return authKey ? { 'X-Parish-Key': authKey } : {}; }
+    function signedIn() { return !!(account && account.user); }
+    function activeMembership() {
+        return account ? account.parishes.find(p => p.slug === ACTIVE_PARISH) || null : null;
+    }
+    function isReadOnly() { return role === 'viewer'; }
+    function parishName() {
+        const m = activeMembership();
+        if (m) return m.name;
+        try { return localStorage.getItem(PARISH_NAME_STORAGE_KEY) || 'Pravoslávni Markovce'; } catch (_) { return 'Pravoslávni Markovce'; }
+    }
+    function canPush() { return signedIn() && !!activeMembership() && (role === 'editor' || role === 'admin'); }
+    function syncURL() { return '/api/sync?parish=' + encodeURIComponent(ACTIVE_PARISH); }
 
     function setStatus(next) {
         try {
@@ -1402,107 +1555,226 @@ const sync = (() => {
             el.dataset.status = next;
             const labels = {
                 synced:    '⇅ Synchronizované',
+                readonly:  '⇣ Len na čítanie',
                 uploading: '↑ Nahráva sa',
                 offline:   '⚠ Bez spojenia',
-                // No parish key on this device (never seeded, or the browser
-                // cleared site storage). Shown — not hidden — because a silently
-                // non-syncing device is exactly how two devices drift apart.
-                nokey:     '⚠ Bez synchronizácie – zadať kľúč',
+                // Signed out, or signed in without access to this parish.
+                // Shown — not hidden — because a silently non-syncing device
+                // is exactly how two devices drift apart.
+                signedout: '⚠ Bez synchronizácie – prihlásiť sa',
+                nomember:  '⚠ Bez prístupu k farnosti',
                 hidden:    '',
             };
             el.textContent = labels[next] !== undefined ? labels[next] : '';
-            el.title = next === 'nokey'
-                ? 'Toto zariadenie nemá synchronizačný kľúč. Kliknutím ho zadáte.'
-                : '';
+            const email = signedIn() ? account.user.email : '';
+            el.title = {
+                signedout: 'Toto zariadenie sa nesynchronizuje. Kliknutím sa prihlásite cez Google.',
+                nomember:  `Účet ${email} nemá prístup k tejto farnosti. Požiadajte správcu farnosti o prístup.`,
+                readonly:  'Máte prístup len na čítanie – zmeny sa neukladajú na server.',
+            }[next] || '';
         } catch (_) {}
     }
 
-    // Let the user seed the key by hand (tap the status pill) when it's missing.
-    function promptForKey() {
-        if (hasKey()) return;
-        const k = window.prompt('Zadajte synchronizačný kľúč farnosti:');
-        if (!k || !k.trim()) return;
-        try { localStorage.setItem(KEY_STORAGE, k.trim()); } catch (_) {}
-        authKey = k.trim();
-        bootstrap();
+    function signIn() {
+        const back = window.location.pathname + window.location.search;
+        window.location.href = '/api/auth/login?returnTo=' + encodeURIComponent(back);
+    }
+
+    async function signOut() {
+        const email = signedIn() ? account.user.email : '';
+        if (!confirm(`Odhlásiť sa (${email})?\n\nÚdaje uložené na tomto zariadení zostanú, ale prestanú sa synchronizovať.`)) return;
+        await flushNow();
+        try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (_) {}
+        window.location.reload();
+    }
+
+    // Each parish has its own offline cache, so switching is a page reload
+    // with a different ACTIVE_PARISH — no state from one parish can leak into
+    // (and be pushed to) another.
+    async function switchParish(slug) {
+        if (slug === ACTIVE_PARISH) return;
+        if (_saveTimer) flushSaveToLocalStorage();
+        await flushNow();
+        try { localStorage.setItem(ACTIVE_PARISH_STORAGE, slug); } catch (_) {}
+        // If storage is unavailable the reload would land on the same parish
+        // again (and, from bootstrap, loop) — stay put instead.
+        let stored = null;
+        try { stored = localStorage.getItem(ACTIVE_PARISH_STORAGE); } catch (_) {}
+        if (stored === slug) window.location.reload();
+    }
+
+    // Header: account button + parish picker (only with 2+ parishes).
+    function renderAccountUI() {
+        try {
+            const btn = document.getElementById('accountBtn');
+            const select = document.getElementById('parishSelect');
+            if (!btn || !select) return;
+            if (!account) { btn.hidden = true; select.hidden = true; return; }
+
+            btn.hidden = false;
+            btn.replaceChildren();
+            const icon = document.createElement('span');
+            icon.className = 'header-nav-icon';
+            icon.setAttribute('aria-hidden', 'true');
+            const label = document.createElement('span');
+            label.className = 'header-nav-label';
+            if (signedIn()) {
+                if (account.user.avatarUrl) {
+                    const img = document.createElement('img');
+                    img.className = 'account-avatar';
+                    img.src = account.user.avatarUrl;
+                    img.alt = '';
+                    img.referrerPolicy = 'no-referrer';
+                    icon.appendChild(img);
+                } else {
+                    icon.textContent = '👤';
+                }
+                label.textContent = 'Odhlásiť';
+                const m = activeMembership();
+                const roleNames = { admin: 'správca', editor: 'editor', viewer: 'len čítanie' };
+                btn.title = account.user.email + (m ? ` · ${roleNames[m.role] || m.role}` : '');
+            } else {
+                icon.textContent = '🔑';
+                label.textContent = 'Prihlásiť sa';
+                btn.title = 'Prihlásiť sa cez Google a synchronizovať rozpis medzi zariadeniami';
+            }
+            btn.append(icon, label);
+
+            const parishes = account.parishes || [];
+            select.hidden = parishes.length < 2;
+            select.replaceChildren(...parishes.map(p => new Option(p.name, p.slug, false, p.slug === ACTIVE_PARISH)));
+
+            const historyBtn = document.getElementById('historyBtn');
+            if (historyBtn) historyBtn.hidden = !canPush();
+
+            const m = activeMembership();
+            const subtitle = document.getElementById('parishSubtitle');
+            if (m && subtitle) subtitle.textContent = 'Generátor liturgického rozpisu – ' + m.name;
+        } catch (_) {}
+    }
+
+    // Returns false when the account could not be determined (offline).
+    async function loadAccount() {
+        try {
+            const r = await fetch('/api/me', { cache: 'no-store' });
+            if (!r.ok) throw new Error('GET me ' + r.status);
+            account = await r.json();
+        } catch (_) {
+            return false;
+        }
+        const m = activeMembership();
+        if (m) {
+            role = m.role;
+            let cachedName = null;
+            try { cachedName = localStorage.getItem(PARISH_NAME_STORAGE_KEY); } catch (_) {}
+            if (cachedName !== m.name) {
+                try { localStorage.setItem(PARISH_NAME_STORAGE_KEY, m.name); } catch (_) {}
+                updatePreview();
+            }
+        }
+        renderAccountUI();
+        // Role decides whether editing is allowed at all.
+        applyLockState();
+        return true;
+    }
+
+    // Lost session or membership mid-flight: forget the account so the next
+    // pull re-reads /api/me and shows the right state.
+    function handleAuthFailure(status) {
+        account = null;
+        setStatus(status === 401 ? 'signedout' : 'nomember');
+    }
+
+    // Saved versions of one week, newest first (editors only; see api/history.js).
+    async function fetchHistory(weekKey) {
+        const r = await fetch('/api/history?parish=' + encodeURIComponent(ACTIVE_PARISH) +
+            '&week=' + encodeURIComponent(weekKey), { cache: 'no-store' });
+        if (r.status === 401 || r.status === 403) handleAuthFailure(r.status);
+        if (!r.ok) throw new Error('GET history ' + r.status);
+        return (await r.json()).revisions || [];
     }
 
     function markWeekDirty(key) { if (key) dirtyWeeks.add(key); }
     function markSettingDirty(k) { if (k) dirtySettings.add(k); }
 
     function scheduleFlush() {
-        if (!hasKey()) return;
+        if (!canPush()) return;
         if (flushTimer) return;
         flushTimer = setTimeout(() => { flushTimer = null; flushNow(); }, COALESCE_MS);
     }
 
     async function flushNow({ beacon = false } = {}) {
-        if (!hasKey()) return;
+        if (!canPush()) return;
         if (inFlight && !beacon) return;
         const weekKeys = [...dirtyWeeks]; dirtyWeeks.clear();
         const settingKeys = [...dirtySettings]; dirtySettings.clear();
         if (!weekKeys.length && !settingKeys.length) { setStatus('synced'); return; }
         inFlight = true;
         setStatus('uploading');
+        let authFailure = 0;
+        const post = async (body) => {
+            const r = await fetch(syncURL(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+                keepalive: beacon,
+            });
+            if (r.status === 401 || r.status === 403) authFailure = r.status;
+            if (!r.ok) throw new Error('POST ' + r.status);
+        };
         try {
             for (const k of weekKeys) {
                 const entry = state.archive[k];
                 if (!entry) continue;
-                const body = JSON.stringify({
-                    weekKey: k,
-                    payload: entry,
-                    updated_at: entry.updatedAt || Date.now(),
-                });
-                const r = await fetch('/api/sync', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                    body,
-                    keepalive: beacon,
-                });
-                if (!r.ok) throw new Error('POST weeks ' + r.status);
+                await post({ weekKey: k, payload: entry, updated_at: entry.updatedAt || Date.now() });
             }
             for (const k of settingKeys) {
                 let value = null;
                 if (k === 'calendarStyle') value = state.calendarStyle;
-                const ts = Number(localStorage.getItem('markovce-settings-' + k + '-updatedAt') || Date.now());
-                const body = JSON.stringify({ settingsKey: k, value, updated_at: ts });
-                const r = await fetch('/api/sync', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                    body,
-                    keepalive: beacon,
-                });
-                if (!r.ok) throw new Error('POST settings ' + r.status);
+                const ts = Number(localStorage.getItem(CAL_TS_STORAGE_KEY) || Date.now());
+                await post({ settingsKey: k, value, updated_at: ts });
             }
             setStatus('synced');
         } catch (_) {
             weekKeys.forEach(k => dirtyWeeks.add(k));
             settingKeys.forEach(k => dirtySettings.add(k));
-            setStatus('offline');
+            if (authFailure) handleAuthFailure(authFailure);
+            else setStatus('offline');
         } finally {
             inFlight = false;
         }
     }
 
-    // Pull from the server and merge (server wins only if strictly newer), then
-    // push anything local-newer. Runs on page load and again whenever the app
-    // comes back into view (see below) so a tab/home-screen app left open on
-    // one device picks up edits made on another instead of showing days-old
-    // state until the next full reload.
+    // Pull from the server and merge (server wins only if strictly newer —
+    // or, for a viewer, whenever it differs), then push anything local-newer.
+    // Runs on page load and again whenever the app comes back into view (see
+    // below) so a tab/home-screen app left open on one device picks up edits
+    // made on another instead of showing days-old state until the next full
+    // reload.
     let pulling = false;
     let lastPullAt = 0;
 
     async function bootstrap() {
-        captureKeyFromURL();
-        if (!hasKey()) { setStatus('nokey'); return; }
         if (pulling) return;
         pulling = true;
+        lastPullAt = Date.now();
         try {
+            if (!account && !(await loadAccount())) { setStatus('offline'); return; }
+            if (!signedIn()) { setStatus('signedout'); return; }
+            if (!activeMembership()) {
+                // This device's parish isn't one of the user's (e.g. first
+                // sign-in on a fresh device): move to their first parish.
+                if (account.parishes.length) { switchParish(account.parishes[0].slug); return; }
+                setStatus('nomember');
+                return;
+            }
+            const readOnly = isReadOnly();
+
             // no-store: never let Safari/iOS hand back a cached copy of the feed.
-            const r = await fetch('/api/sync', { headers: authHeaders(), cache: 'no-store' });
+            const r = await fetch(syncURL(), { cache: 'no-store' });
+            if (r.status === 401 || r.status === 403) { handleAuthFailure(r.status); return; }
             if (!r.ok) throw new Error('GET ' + r.status);
             const { weeks, settings } = await r.json();
-            lastPullAt = Date.now();
 
             const serverByKey = new Map((weeks || []).map(w => [w.weekKey, w]));
             const localKeys = new Set(Object.keys(state.archive));
@@ -1513,8 +1785,9 @@ const sync = (() => {
             for (const [key, w] of serverByKey) {
                 const local = state.archive[key];
                 const localTs = (local && local.updatedAt) ? local.updatedAt : 0;
-                if (!local || w.updated_at > localTs) {
+                if (!local || w.updated_at > localTs || (readOnly && w.updated_at !== localTs)) {
                     state.archive[key] = { ...w.payload, updatedAt: w.updated_at };
+                    undoHistory.forgetWeek(key);
                     if (key === curKey) touchedCurrentWeek = true;
                 } else if (w.updated_at < localTs) {
                     dirtyWeeks.add(key);
@@ -1522,19 +1795,21 @@ const sync = (() => {
             }
 
             // Local-only keys: server doesn't have them → push
-            for (const key of localKeys) {
-                if (!serverByKey.has(key)) dirtyWeeks.add(key);
+            if (!readOnly) {
+                for (const key of localKeys) {
+                    if (!serverByKey.has(key)) dirtyWeeks.add(key);
+                }
             }
 
             // Settings merge
             const srvCalendar = settings && settings.calendarStyle;
-            const localCalTs = Number(localStorage.getItem('markovce-settings-calendarStyle-updatedAt') || 0);
+            const localCalTs = Number(localStorage.getItem(CAL_TS_STORAGE_KEY) || 0);
             if (srvCalendar) {
-                if (srvCalendar.updated_at > localCalTs) {
+                if (srvCalendar.updated_at > localCalTs || (readOnly && srvCalendar.updated_at !== localCalTs)) {
                     const newVal = srvCalendar.value === 'julian' ? 'julian' : 'antiochian';
+                    localStorage.setItem(CAL_TS_STORAGE_KEY, String(srvCalendar.updated_at));
                     if (newVal !== state.calendarStyle) {
                         state.calendarStyle = newVal;
-                        localStorage.setItem('markovce-settings-calendarStyle-updatedAt', String(srvCalendar.updated_at));
                         syncCalendarPickerUI();
                     }
                 } else if (srvCalendar.updated_at < localCalTs) {
@@ -1543,6 +1818,7 @@ const sync = (() => {
             } else {
                 dirtySettings.add('calendarStyle');
             }
+            if (readOnly) { dirtyWeeks.clear(); dirtySettings.clear(); }
 
             // Reload current week into top-level state BEFORE persisting so
             // localStorage captures the merged-from-server values, not the
@@ -1551,12 +1827,7 @@ const sync = (() => {
             // archive on next load, but keeps the cache internally consistent.)
             if (touchedCurrentWeek && curKey && hasArchiveEntry(curKey)) {
                 loadWeekFromArchive(curKey);
-                updateUI();
-                renderDayDetails();
-                renderWeekFeastHints();
-                updatePreview();
-                document.getElementById('fastingMode').checked = state.fastingMode;
-                applyLockState();
+                refreshCurrentWeekUI();
             }
 
             // Persist merged state to offline cache — write directly to avoid
@@ -1575,10 +1846,10 @@ const sync = (() => {
                     archive: state.archive,
                     iconImageData: state._iconDataUrl || null,
                 };
-                localStorage.setItem('markovce-rozpis-state', JSON.stringify(stateToSave));
+                localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(stateToSave));
             } catch (_) {}
 
-            setStatus('synced');
+            setStatus(readOnly ? 'readonly' : 'synced');
             if (dirtyWeeks.size || dirtySettings.size) scheduleFlush();
         } catch (_) {
             setStatus('offline');
@@ -1593,14 +1864,14 @@ const sync = (() => {
     const PERIODIC_PULL_MS = 5 * 60 * 1000;
 
     function pullIfStale() {
-        if (!hasKey()) return;
         if (document.visibilityState !== 'visible') return;
         if (Date.now() - lastPullAt < RESUME_PULL_MIN_MS) return;
         bootstrap();
     }
 
-    window.addEventListener('online',  () => { if (hasKey()) { scheduleFlush(); pullIfStale(); } });
-    window.addEventListener('offline', () => setStatus(hasKey() ? 'offline' : 'nokey'));
+    consumeURLParams();
+    window.addEventListener('online',  () => { scheduleFlush(); pullIfStale(); });
+    window.addEventListener('offline', () => setStatus('offline'));
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pullIfStale(); });
     // bfcache restore (iOS Safari back/forward, home-screen apps) skips DOMContentLoaded.
     window.addEventListener('pageshow', (e) => { if (e.persisted) pullIfStale(); });
@@ -1608,10 +1879,20 @@ const sync = (() => {
 
     document.addEventListener('DOMContentLoaded', () => {
         const el = document.getElementById('syncStatus');
-        if (el) el.addEventListener('click', () => { if (el.dataset.status === 'nokey') promptForKey(); });
+        if (el) el.addEventListener('click', () => {
+            if (el.dataset.status === 'signedout') signIn();
+            else if (el.dataset.status === 'nomember') alert(el.title);
+        });
+        const btn = document.getElementById('accountBtn');
+        if (btn) btn.addEventListener('click', () => { if (signedIn()) signOut(); else signIn(); });
+        const select = document.getElementById('parishSelect');
+        if (select) select.addEventListener('change', () => switchParish(select.value));
     });
 
-    return { bootstrap, scheduleFlush, flushNow, markWeekDirty, markSettingDirty };
+    return {
+        bootstrap, scheduleFlush, flushNow, markWeekDirty, markSettingDirty, isReadOnly, parishName,
+        canEdit: canPush, fetchHistory,
+    };
 })();
 
 // Day names in Slovak (matching the interface)
@@ -1683,7 +1964,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Only load standard week if no saved events exist
     if (!loaded) {
-        loadStandardWeek();
+        loadStandardWeek({ dirty: false });
     }
 
     // Sync fasting mode checkbox with state
@@ -1730,7 +2011,10 @@ function initializeEventListeners() {
             btn.classList.add('active');
             state.currentDay = btn.dataset.day;
             renderDayDetails();
-            saveToLocalStorage();
+            // Passive: picking a day to look at is not an edit. Stamping it
+            // would mark this device's copy of the week newest and overwrite
+            // newer edits from another device (see jumpToThisWeek).
+            saveToLocalStorage({ dirty: false });
         });
     });
 
@@ -1837,7 +2121,7 @@ function initializeEventListeners() {
             renderWeekFeastHints();
             saveToLocalStorage();
             const calTs = Date.now();
-            localStorage.setItem('markovce-settings-calendarStyle-updatedAt', String(calTs));
+            localStorage.setItem(CAL_TS_STORAGE_KEY, String(calTs));
             sync.markSettingDirty('calendarStyle');
             sync.scheduleFlush();
         });
@@ -2079,7 +2363,10 @@ function handleGalleryUpload(e) {
     e.target.value = '';
 }
 
-function loadStandardWeek() {
+// `dirty: false` is for filling in a device that has nothing saved yet: that
+// is not an edit, and stamping it "now" would make the template look newer
+// than the real schedule on the server and overwrite it on first sync.
+function loadStandardWeek({ dirty = true } = {}) {
     if (!guardEditable()) return;
     state.events = {
         monday: [],
@@ -2101,7 +2388,7 @@ function loadStandardWeek() {
     };
     renderDayDetails();
     updatePreview();
-    saveToLocalStorage();
+    saveToLocalStorage({ dirty });
 }
 
 function loadFastingWeek() {
@@ -2277,7 +2564,8 @@ function initializeModalDismissHandlers() {
     const modals = [
         { id: 'galleryModal',      close: closeGallery },
         { id: 'statsModal',        close: closeStats },
-        { id: 'imageEditorModal',  close: closeImageEditor }
+        { id: 'imageEditorModal',  close: closeImageEditor },
+        { id: 'historyModal',      close: closeHistory }
     ];
 
     // Backdrop click (click lands on the modal backdrop itself, not the inner content card)
@@ -2509,7 +2797,7 @@ function drawHeader(ctx, canvas, scale, sizes) {
     // Title (Top Left)
     ctx.font = `800 ${48 * scale}px "Outfit", sans-serif`;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.fillText('Pravoslávni Markovce', 70 * scale, 80 * scale);
+    ctx.fillText(sync.parishName(), 70 * scale, 80 * scale);
 
     // Dates (Large White) — baseline at (100 + dateFont) scales with font so the gap to startY stays fixed at 80 design units
     const end = new Date(state.currentWeekStart);
@@ -2717,13 +3005,15 @@ function isWeekFullyPast(weekStart) {
 }
 
 function isCurrentWeekLocked() {
+    // A viewer can't save anything to the server, so every week is read-only.
+    if (sync.isReadOnly()) return true;
     if (!state.currentWeekStart) return false;
     if (!isWeekFullyPast(state.currentWeekStart)) return false;
     return !sessionUnlockedWeeks.has(currentWeekKey());
 }
 
 function unlockCurrentWeek() {
-    if (!isCurrentWeekLocked()) return;
+    if (!isCurrentWeekLocked() || sync.isReadOnly()) return;
     const ok = confirm('Tento týždeň už prešiel. Naozaj chcete odomknúť minulý týždeň pre úpravu?\n\nZmeny ovplyvnia ročné štatistiky.');
     if (!ok) return;
     sessionUnlockedWeeks.add(currentWeekKey());
@@ -2732,10 +3022,22 @@ function unlockCurrentWeek() {
 
 function applyLockState() {
     const locked = isCurrentWeekLocked();
+    // Runs on every week change and role change, which is also when the
+    // undo/redo buttons' state changes.
+    undoHistory.renderButtons();
     document.body.classList.toggle('week-locked', locked);
 
     const banner = document.getElementById('weekLockBanner');
-    if (banner) banner.style.display = locked ? 'flex' : 'none';
+    if (banner) {
+        banner.style.display = locked ? 'flex' : 'none';
+        const readOnly = sync.isReadOnly();
+        const text = banner.querySelector('.week-lock-text');
+        if (text) text.textContent = readOnly
+            ? 'Máte k tejto farnosti prístup len na čítanie.'
+            : 'Tento týždeň už prešiel a je uzamknutý.';
+        const unlock = banner.querySelector('.week-lock-unlock');
+        if (unlock) unlock.hidden = readOnly;
+    }
 
     // Disable specific form controls directly so keyboard nav is also blocked
     const toToggle = ['dayFeastName', 'fastingMode'];
@@ -2764,6 +3066,112 @@ function guardEditable(silent) {
         return false;
     }
     return true;
+}
+// ───────────────────────────────────────────────────────────────────────────
+
+// ── Week version history ───────────────────────────────────────────────────
+// Lists the server's saved versions of the current week and restores one.
+// A restore is an ordinary edit (fresh timestamp, pushed by sync), so it is
+// itself recorded in history and can be undone the same way.
+const HISTORY_DAY_LABELS = { monday: 'Po', tuesday: 'Ut', wednesday: 'St', thursday: 'Št', friday: 'Pi', saturday: 'So', sunday: 'Ne' };
+
+function formatHistoryTime(ms) {
+    return new Date(ms).toLocaleString('sk-SK', {
+        day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+}
+
+function historyAuthor(rev) {
+    if (!rev.by) return 'Pôvodné údaje (pred zavedením histórie)';
+    return rev.by.name ? `${rev.by.name} (${rev.by.email})` : rev.by.email;
+}
+
+async function openHistory() {
+    if (!sync.canEdit()) return;
+    const key = currentWeekKey();
+    const end = new Date(state.currentWeekStart);
+    end.setDate(end.getDate() + 6);
+    document.getElementById('historyWeekLabel').textContent = '· ' + formatWeekRange(state.currentWeekStart, end);
+    const list = document.getElementById('historyList');
+    list.replaceChildren(Object.assign(document.createElement('p'), { className: 'history-empty', textContent: 'Načítava sa…' }));
+    document.getElementById('historyModal').style.display = 'flex';
+    // Push pending edits first so the newest version is this device's.
+    await sync.flushNow();
+    let revisions;
+    try {
+        revisions = await sync.fetchHistory(key);
+    } catch (_) {
+        list.firstChild.textContent = 'Históriu sa nepodarilo načítať. Skontrolujte pripojenie a prihlásenie.';
+        return;
+    }
+    if (key !== currentWeekKey()) return;
+    renderHistory(revisions);
+}
+
+function closeHistory() {
+    document.getElementById('historyModal').style.display = 'none';
+}
+
+function renderHistory(revisions) {
+    const list = document.getElementById('historyList');
+    if (!revisions.length) {
+        list.replaceChildren(Object.assign(document.createElement('p'), {
+            className: 'history-empty',
+            textContent: 'Tento týždeň zatiaľ nemá na serveri uloženú žiadnu verziu.',
+        }));
+        return;
+    }
+    list.replaceChildren(...revisions.map((rev, i) => {
+        const item = document.createElement('details');
+        item.className = 'history-item';
+
+        const summary = document.createElement('summary');
+        const when = Object.assign(document.createElement('span'), { className: 'history-when', textContent: formatHistoryTime(rev.savedAt) });
+        const who = Object.assign(document.createElement('span'), { className: 'history-who', textContent: historyAuthor(rev) });
+        who.title = who.textContent;
+        summary.append(when, who);
+        if (i === 0) summary.append(Object.assign(document.createElement('span'), { className: 'history-current', textContent: 'aktuálna' }));
+
+        const body = document.createElement('div');
+        body.className = 'history-body';
+        const days = document.createElement('div');
+        days.className = 'history-days';
+        const events = (rev.payload && rev.payload.events) || {};
+        const feasts = (rev.payload && rev.payload.feasts) || {};
+        DAY_KEYS.forEach(day => {
+            const lines = [feasts[day] ? '✝ ' + feasts[day] : null, ...(Array.isArray(events[day]) ? events[day] : [])].filter(Boolean);
+            days.append(
+                Object.assign(document.createElement('span'), { className: 'history-day', textContent: HISTORY_DAY_LABELS[day] }),
+                Object.assign(document.createElement('span'), { textContent: lines.length ? lines.join(' · ') : '—' }),
+            );
+        });
+        body.append(days);
+        if (i > 0) {
+            const btn = Object.assign(document.createElement('button'), {
+                type: 'button', className: 'history-restore', textContent: 'Obnoviť túto verziu',
+            });
+            btn.addEventListener('click', () => restoreRevision(rev));
+            body.append(btn);
+        }
+        item.append(summary, body);
+        return item;
+    }));
+}
+
+function restoreRevision(rev) {
+    const ok = confirm(`Obnoviť verziu z ${formatHistoryTime(rev.savedAt)}?\n\n` +
+        'Súčasný rozpis tohto týždňa sa ňou nahradí. Aj obnovenie sa uloží do histórie, takže sa dá vrátiť.');
+    if (!ok) return;
+    const key = currentWeekKey();
+    const before = state.archive[key];
+    state.archive[key] = { ...rev.payload, updatedAt: Date.now() };
+    loadWeekFromArchive(key);
+    refreshCurrentWeekUI();
+    // A real edit: stamps a fresh timestamp and pushes it to the server.
+    saveToLocalStorage();
+    // Its own undo step, so Späť brings back what the restore replaced.
+    undoHistory.recordEdit(key, before, state.archive[key], { newStep: true });
+    closeHistory();
 }
 // ───────────────────────────────────────────────────────────────────────────
 

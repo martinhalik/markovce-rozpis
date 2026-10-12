@@ -11,9 +11,117 @@ them is still on an old build (reload it; the `Cache-Control: no-cache` headers 
 make a plain reload enough).
 
 Cross-device state lives on the server (`/api/sync`) and is pulled on page load, whenever the app
-comes back into view, and every 5 minutes while it stays open. A device with no sync key shows an
-orange *Bez synchronizácie – zadať kľúč* pill (tap it to enter the key); until a key is entered
-that device is offline-only and will drift from the others.
+comes back into view, and every 5 minutes while it stays open. A signed-out device shows an orange
+*Bez synchronizácie – prihlásiť sa* pill (tap it, or *Prihlásiť sa* in the header, to sign in with
+Google); until then that device is offline-only and will drift from the others.
+
+## Accounts and parishes
+
+People sign in with Google. Each user belongs to one or more parishes with a role:
+
+| role     | can                                                         |
+|----------|-------------------------------------------------------------|
+| `viewer` | see the parish's schedule (read-only in the app)            |
+| `editor` | also edit weeks and the calendar style                      |
+| `admin`  | same as editor for now (member management is SQL, below)    |
+
+With two or more parishes a picker appears in the header. Each parish has its own offline cache on
+the device, and switching parish reloads the page. Signed in but not a member of any parish shows
+*Bez prístupu k farnosti*.
+
+Every parish-scoped endpoint goes through `requireMember(req, parishSlug, minRole)` in
+`lib/auth.js` — the database does not enforce tenancy, so a new endpoint must use it too.
+
+### Who gets in
+
+Like Slack's "anyone with an @company email can join": a parish can have a `join_domain`, and
+anyone who signs in with a verified Google account at exactly that domain becomes a member with
+the parish's `join_role` (`editor` or `viewer`; never admin). Markovce is set to **@krm.sk → editor**.
+Subdomains don't count (`@student.krm.sk` is not `@krm.sk`), and signing in never changes the role
+of someone who is already a member.
+
+```sql
+-- change or switch off auto-join
+UPDATE parishes SET join_domain = 'krm.sk', join_role = 'viewer' WHERE slug = 'markovce';
+UPDATE parishes SET join_domain = NULL WHERE slug = 'markovce';
+```
+
+### Version history
+
+Every week save that reaches the server is kept in `week_revisions` (who, when, the whole week).
+Editors open **🕘 História** next to the week picker to see a week's versions and restore one; the
+restore is saved as a new change, so it can be undone the same way. Saves by the same person within
+5 minutes merge into one version, so each entry is roughly one editing session and the version
+before someone's session is always kept. What was on the server before history existed is the first
+version of each week.
+
+### Undo / redo
+
+**↶ Späť** / **↷ Znova** next to the week picker (or Ctrl/⌘+Z, Ctrl/⌘+Shift+Z, Ctrl+Y outside text
+fields) step back and forth through this session's edits of the current week; typing that runs
+together counts as one step. Undo and redo are ordinary edits, so they save and sync. The steps
+live only in the open page; anything older is in the version history above. If a newer copy of the
+week arrives from another device, that week's steps are dropped so undo can't revert someone
+else's change.
+
+### Adding members by hand
+
+For anyone outside the join domain. The person signs in once (that creates their `users` row), then:
+
+```sql
+INSERT INTO parish_members (parish_id, user_id, role)
+SELECT p.id, u.id, 'editor' FROM parishes p, users u
+WHERE p.slug = 'markovce' AND u.email = 'someone@gmail.com'
+ON CONFLICT (parish_id, user_id) DO UPDATE SET role = EXCLUDED.role;
+```
+
+A new parish is `INSERT INTO parishes (slug, name) VALUES ('presov', 'Pravoslávni Prešov');`
+(slug: lowercase letters, digits, dashes). Removing a row from `parish_members` takes effect on that
+person's next request.
+
+### Public calendar
+
+Anyone can subscribe without signing in:
+
+- `/p/<slug>/kalendar.ics` — any parish
+- `/kalendar.ics` — Markovce (the original URL, kept working)
+
+## Setup
+
+Environment variables (Vercel → Project → Settings → Environment Variables):
+
+| name                   | value                                                                  |
+|------------------------|------------------------------------------------------------------------|
+| `POSTGRES_URL`         | set by the Vercel Postgres integration                                 |
+| `GOOGLE_CLIENT_ID`     | OAuth client (type *Web application*) from Google Cloud console        |
+| `GOOGLE_CLIENT_SECRET` | its secret                                                             |
+| `SESSION_SECRET`       | 32+ random characters (`openssl rand -base64 48`); signs session cookies |
+| `APP_ORIGIN`           | production origin, e.g. `https://rozpis.example.sk` (optional; without it the request's host is used) |
+
+In the Google OAuth client add `https://<your-domain>/api/auth/callback` as an authorised redirect
+URI (and `http://localhost:3000/api/auth/callback` for `vercel dev`). `PARISH_KEY` is no longer used
+and can be deleted.
+
+The schema (`db/init.sql`, same statements as `lib/schema.js`) is applied automatically on the first
+API request after deploy. It migrates the original single-tenant `weeks`/`settings` tables in place:
+existing data becomes the `markovce` parish. After deploying, the owner signs in once and grants
+themselves admin with the SQL above (role `'admin'`).
+
+## Testing
+
+```sh
+eval "$(scripts/test-db.sh)"   # throwaway local Postgres (or set the two URLs yourself)
+npm test                       # API + schema tests against TEST_DATABASE_URL (wiped)
+npm run e2e                    # browser walkthrough, desktop + phone, against E2E_DATABASE_URL
+```
+
+The walkthrough (`e2e/walkthrough.spec.mjs`) plays several people on several devices: signing in,
+editing, a mistake, undo/redo, restoring from history, access rules, parish switching and the public
+calendar, checking the screen and the database at each step. It writes **`e2e-report/index.html`**,
+one page with every step's result and screenshots at desktop and phone size.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs both on every push; open the run to see the
+pass/fail table, and download the `e2e-report` artifact for the screenshots.
 
 ## Icons
 

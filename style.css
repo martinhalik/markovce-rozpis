@@ -171,6 +171,45 @@ body {
     line-height: 1;
 }
 
+/* Class-level display rules would otherwise override the [hidden] attribute. */
+.header-nav-btn[hidden],
+.header-nav-select[hidden],
+.week-lock-unlock[hidden] {
+    display: none;
+}
+
+.header-nav-select {
+    padding: 12px 14px;
+    max-width: 240px;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 12px;
+    color: white;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+}
+
+.header-nav-select:focus-visible {
+    outline: 2px solid white;
+    outline-offset: 2px;
+}
+
+/* The open dropdown list uses the OS's light background. */
+.header-nav-select option {
+    color: #222;
+}
+
+.account-avatar {
+    display: block;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
 .header h1 {
     font-size: 2.5rem;
     font-weight: 800;
@@ -272,6 +311,7 @@ body {
 /* Week Navigation */
 label.week-label {
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
     gap: 8px;
 }
@@ -288,6 +328,44 @@ label.week-label {
     text-underline-offset: 2px;
     transition: color 0.15s ease;
     margin-left: auto;
+}
+
+/* Undo / redo / history, at the far right of the week label row. */
+.week-tools {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.week-tool-btn {
+    padding: 2px 8px;
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--primary-blue);
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.week-tool-btn:hover:not(:disabled) {
+    border-color: var(--primary-blue);
+}
+
+.week-tool-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.history-link {
+    margin-left: 4px;
+    text-decoration: none;
+}
+
+.history-link[hidden] {
+    display: none;
 }
 
 .today-link:hover {
@@ -1038,7 +1116,9 @@ label.week-label {
 .sync-status[data-status="synced"]    { background: #2ecc71; }
 .sync-status[data-status="uploading"] { background: #3498db; }
 .sync-status[data-status="offline"]   { background: #7f8c8d; opacity: 0.65; }
-.sync-status[data-status="nokey"]     { background: #e67e22; opacity: 0.9; pointer-events: auto; cursor: pointer; }
+.sync-status[data-status="readonly"]  { background: #16a085; }
+.sync-status[data-status="signedout"],
+.sync-status[data-status="nomember"]  { background: #e67e22; opacity: 0.9; pointer-events: auto; cursor: pointer; }
 .sync-status[data-status="hidden"]    { opacity: 0; }
 
 /* ── Past-week lock banner ──────────────────────────────────────────────── */
@@ -1131,6 +1211,114 @@ body.week-locked .fasting-mode-label {
 /* ── Stats modal ────────────────────────────────────────────────────────── */
 .stats-modal-content {
     max-width: 900px;
+}
+
+/* ── Week version history ───────────────────────────────────────────────── */
+.history-modal-content {
+    max-width: 640px;
+}
+
+.history-intro {
+    margin-bottom: 16px;
+    color: var(--text-gray);
+    font-size: 0.9rem;
+}
+
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.history-empty {
+    color: var(--text-gray);
+}
+
+.history-item {
+    background: var(--dark-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.history-item summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.history-item summary::-webkit-details-marker {
+    display: none;
+}
+
+.history-item summary::before {
+    content: '▸';
+    color: var(--text-gray);
+    transition: transform 0.15s ease;
+}
+
+.history-item[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.history-when {
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.history-who {
+    flex: 1 1 160px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-gray);
+    font-size: 0.9rem;
+}
+
+.history-current {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(46, 204, 113, 0.18);
+    color: var(--primary-green);
+    font-size: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.history-body {
+    padding: 0 14px 14px 32px;
+}
+
+.history-days {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    margin-bottom: 12px;
+    font-size: 0.88rem;
+}
+
+.history-day {
+    color: var(--text-gray);
+    font-weight: 700;
+}
+
+.history-restore {
+    padding: 8px 14px;
+    background: var(--primary-blue);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-family: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.history-restore:hover {
+    background: var(--purple);
 }
 
 .stats-year-picker {
@@ -1643,11 +1831,18 @@ body.week-locked .fasting-mode-label {
 
     .header-nav {
         justify-content: center;
+        flex-wrap: wrap;
     }
 
     .header-nav-btn {
-        width: 100%;
+        flex: 1 1 0;
+        min-width: 0;
         justify-content: center;
+    }
+
+    .header-nav-select {
+        flex: 1 1 100%;
+        max-width: none;
     }
 
     .stats-summary {

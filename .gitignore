@@ -4,3 +4,8 @@
 
 # Node dependencies (local dev/verify only)
 node_modules/
+
+# Test output (npm test / npm run e2e)
+e2e-report/
+playwright-report/
+test-results/
