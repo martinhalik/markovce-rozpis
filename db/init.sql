@@ -83,6 +83,25 @@ DO $$ BEGIN
     END IF;
 END $$;
 
+CREATE TABLE IF NOT EXISTS week_revisions (
+    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    parish_id  BIGINT NOT NULL REFERENCES parishes(id) ON DELETE CASCADE,
+    week_key   TEXT NOT NULL,
+    payload    JSONB NOT NULL,
+    updated_at BIGINT NOT NULL,
+    user_id    BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    saved_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS week_revisions_week_idx ON week_revisions (parish_id, week_key, id DESC);
+
+INSERT INTO week_revisions (parish_id, week_key, payload, updated_at)
+SELECT w.parish_id, w.week_key, w.payload, w.updated_at FROM weeks w
+WHERE NOT EXISTS (
+    SELECT 1 FROM week_revisions r WHERE r.parish_id = w.parish_id AND r.week_key = w.week_key
+);
+
 COMMIT;
 
 -- After the owner signs in once with Google (which creates their users row),

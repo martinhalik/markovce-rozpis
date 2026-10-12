@@ -1535,6 +1535,9 @@ const sync = (() => {
             select.hidden = parishes.length < 2;
             select.replaceChildren(...parishes.map(p => new Option(p.name, p.slug, false, p.slug === ACTIVE_PARISH)));
 
+            const historyBtn = document.getElementById('historyBtn');
+            if (historyBtn) historyBtn.hidden = !canPush();
+
             const m = activeMembership();
             const subtitle = document.getElementById('parishSubtitle');
             if (m && subtitle) subtitle.textContent = 'Generátor liturgického rozpisu – ' + m.name;
@@ -1571,6 +1574,15 @@ const sync = (() => {
     function handleAuthFailure(status) {
         account = null;
         setStatus(status === 401 ? 'signedout' : 'nomember');
+    }
+
+    // Saved versions of one week, newest first (editors only; see api/history.js).
+    async function fetchHistory(weekKey) {
+        const r = await fetch('/api/history?parish=' + encodeURIComponent(ACTIVE_PARISH) +
+            '&week=' + encodeURIComponent(weekKey), { cache: 'no-store' });
+        if (r.status === 401 || r.status === 403) handleAuthFailure(r.status);
+        if (!r.ok) throw new Error('GET history ' + r.status);
+        return (await r.json()).revisions || [];
     }
 
     function markWeekDirty(key) { if (key) dirtyWeeks.add(key); }
@@ -1772,7 +1784,10 @@ const sync = (() => {
         if (select) select.addEventListener('change', () => switchParish(select.value));
     });
 
-    return { bootstrap, scheduleFlush, flushNow, markWeekDirty, markSettingDirty, isReadOnly, parishName };
+    return {
+        bootstrap, scheduleFlush, flushNow, markWeekDirty, markSettingDirty, isReadOnly, parishName,
+        canEdit: canPush, fetchHistory,
+    };
 })();
 
 // Day names in Slovak (matching the interface)
@@ -2438,7 +2453,8 @@ function initializeModalDismissHandlers() {
     const modals = [
         { id: 'galleryModal',      close: closeGallery },
         { id: 'statsModal',        close: closeStats },
-        { id: 'imageEditorModal',  close: closeImageEditor }
+        { id: 'imageEditorModal',  close: closeImageEditor },
+        { id: 'historyModal',      close: closeHistory }
     ];
 
     // Backdrop click (click lands on the modal backdrop itself, not the inner content card)
@@ -2936,6 +2952,114 @@ function guardEditable(silent) {
         return false;
     }
     return true;
+}
+// ───────────────────────────────────────────────────────────────────────────
+
+// ── Week version history ───────────────────────────────────────────────────
+// Lists the server's saved versions of the current week and restores one.
+// A restore is an ordinary edit (fresh timestamp, pushed by sync), so it is
+// itself recorded in history and can be undone the same way.
+const HISTORY_DAY_LABELS = { monday: 'Po', tuesday: 'Ut', wednesday: 'St', thursday: 'Št', friday: 'Pi', saturday: 'So', sunday: 'Ne' };
+
+function formatHistoryTime(ms) {
+    return new Date(ms).toLocaleString('sk-SK', {
+        day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+}
+
+function historyAuthor(rev) {
+    if (!rev.by) return 'Pôvodné údaje (pred zavedením histórie)';
+    return rev.by.name ? `${rev.by.name} (${rev.by.email})` : rev.by.email;
+}
+
+async function openHistory() {
+    if (!sync.canEdit()) return;
+    const key = currentWeekKey();
+    const end = new Date(state.currentWeekStart);
+    end.setDate(end.getDate() + 6);
+    document.getElementById('historyWeekLabel').textContent = '· ' + formatWeekRange(state.currentWeekStart, end);
+    const list = document.getElementById('historyList');
+    list.replaceChildren(Object.assign(document.createElement('p'), { className: 'history-empty', textContent: 'Načítava sa…' }));
+    document.getElementById('historyModal').style.display = 'flex';
+    // Push pending edits first so the newest version is this device's.
+    await sync.flushNow();
+    let revisions;
+    try {
+        revisions = await sync.fetchHistory(key);
+    } catch (_) {
+        list.firstChild.textContent = 'Históriu sa nepodarilo načítať. Skontrolujte pripojenie a prihlásenie.';
+        return;
+    }
+    if (key !== currentWeekKey()) return;
+    renderHistory(revisions);
+}
+
+function closeHistory() {
+    document.getElementById('historyModal').style.display = 'none';
+}
+
+function renderHistory(revisions) {
+    const list = document.getElementById('historyList');
+    if (!revisions.length) {
+        list.replaceChildren(Object.assign(document.createElement('p'), {
+            className: 'history-empty',
+            textContent: 'Tento týždeň zatiaľ nemá na serveri uloženú žiadnu verziu.',
+        }));
+        return;
+    }
+    list.replaceChildren(...revisions.map((rev, i) => {
+        const item = document.createElement('details');
+        item.className = 'history-item';
+
+        const summary = document.createElement('summary');
+        const when = Object.assign(document.createElement('span'), { className: 'history-when', textContent: formatHistoryTime(rev.savedAt) });
+        const who = Object.assign(document.createElement('span'), { className: 'history-who', textContent: historyAuthor(rev) });
+        who.title = who.textContent;
+        summary.append(when, who);
+        if (i === 0) summary.append(Object.assign(document.createElement('span'), { className: 'history-current', textContent: 'aktuálna' }));
+
+        const body = document.createElement('div');
+        body.className = 'history-body';
+        const days = document.createElement('div');
+        days.className = 'history-days';
+        const events = (rev.payload && rev.payload.events) || {};
+        const feasts = (rev.payload && rev.payload.feasts) || {};
+        DAY_KEYS.forEach(day => {
+            const lines = [feasts[day] ? '✝ ' + feasts[day] : null, ...(Array.isArray(events[day]) ? events[day] : [])].filter(Boolean);
+            days.append(
+                Object.assign(document.createElement('span'), { className: 'history-day', textContent: HISTORY_DAY_LABELS[day] }),
+                Object.assign(document.createElement('span'), { textContent: lines.length ? lines.join(' · ') : '—' }),
+            );
+        });
+        body.append(days);
+        if (i > 0) {
+            const btn = Object.assign(document.createElement('button'), {
+                type: 'button', className: 'history-restore', textContent: 'Obnoviť túto verziu',
+            });
+            btn.addEventListener('click', () => restoreRevision(rev));
+            body.append(btn);
+        }
+        item.append(summary, body);
+        return item;
+    }));
+}
+
+function restoreRevision(rev) {
+    const ok = confirm(`Obnoviť verziu z ${formatHistoryTime(rev.savedAt)}?\n\n` +
+        'Súčasný rozpis tohto týždňa sa ňou nahradí. Aj obnovenie sa uloží do histórie, takže sa dá vrátiť.');
+    if (!ok) return;
+    const key = currentWeekKey();
+    state.archive[key] = { ...rev.payload, updatedAt: Date.now() };
+    loadWeekFromArchive(key);
+    updateUI();
+    renderDayDetails();
+    renderWeekFeastHints();
+    updatePreview();
+    document.getElementById('fastingMode').checked = state.fastingMode;
+    applyLockState();
+    // A real edit: stamps a fresh timestamp and pushes it to the server.
+    saveToLocalStorage();
+    closeHistory();
 }
 // ───────────────────────────────────────────────────────────────────────────
 

@@ -3,6 +3,7 @@ import { assertSameOrigin, requireMember, sendError } from '../lib/auth.js';
 
 const WEEK_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ALLOWED_SETTINGS_KEYS = new Set(['calendarStyle']);
+const REVISION_MERGE_WINDOW = '5 minutes';
 
 // GET  /api/sync?parish=<slug> → all weeks + settings of that parish (viewer+).
 // POST /api/sync?parish=<slug> → upsert one week or one setting (editor+).
@@ -27,7 +28,7 @@ export default async function handler(req, res) {
 
         if (req.method === 'POST') {
             assertSameOrigin(req);
-            const { parish } = await requireMember(req, req.query.parish, 'editor');
+            const { parish, userId } = await requireMember(req, req.query.parish, 'editor');
             const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
 
             if (body && body.weekKey) {
@@ -39,12 +40,35 @@ export default async function handler(req, res) {
                 ) {
                     return res.status(400).json({ error: 'bad body' });
                 }
+                // One statement: save the week and, if the save won, record
+                // it in the version history. Saves by the same person within
+                // REVISION_MERGE_WINDOW of their previous one update that
+                // version instead of adding another, so history reads as one
+                // entry per editing session — and the version before the
+                // session (someone else's, or older) always stays intact.
                 await sql`
-                    INSERT INTO weeks (parish_id, week_key, payload, updated_at)
-                    VALUES (${parish.id}, ${weekKey}, ${JSON.stringify(payload)}::jsonb, ${updated_at})
-                    ON CONFLICT (parish_id, week_key) DO UPDATE
-                    SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at
-                    WHERE EXCLUDED.updated_at > weeks.updated_at
+                    WITH saved AS (
+                        INSERT INTO weeks (parish_id, week_key, payload, updated_at)
+                        VALUES (${parish.id}, ${weekKey}, ${JSON.stringify(payload)}::jsonb, ${updated_at})
+                        ON CONFLICT (parish_id, week_key) DO UPDATE
+                        SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at
+                        WHERE EXCLUDED.updated_at > weeks.updated_at
+                        RETURNING parish_id, week_key, payload, updated_at
+                    ), latest AS (
+                        SELECT id, user_id, saved_at FROM week_revisions
+                        WHERE parish_id = ${parish.id} AND week_key = ${weekKey}
+                        ORDER BY id DESC LIMIT 1
+                    ), merged AS (
+                        UPDATE week_revisions r
+                        SET payload = saved.payload, updated_at = saved.updated_at, saved_at = NOW()
+                        FROM saved, latest
+                        WHERE r.id = latest.id AND latest.user_id = ${userId}
+                          AND latest.saved_at > NOW() - ${REVISION_MERGE_WINDOW}::interval
+                        RETURNING r.id
+                    )
+                    INSERT INTO week_revisions (parish_id, week_key, payload, updated_at, user_id)
+                    SELECT parish_id, week_key, payload, updated_at, ${userId} FROM saved
+                    WHERE NOT EXISTS (SELECT 1 FROM merged)
                 `;
                 return res.status(200).json({ ok: true });
             }

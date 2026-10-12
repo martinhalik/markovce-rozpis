@@ -243,3 +243,51 @@ test('verified @krm.sk accounts join Markovce as editors; nothing else does', { 
         Object.assign(claims, saved);
     }
 });
+
+test('every accepted week save lands in the version history', { skip }, async () => {
+    const W = '2026-12-07';
+    const save = (uid, events, updated_at, parish = 'markovce') => call(sync, {
+        method: 'POST', query: { parish }, cookies: sessionFor(uid),
+        body: { weekKey: W, payload: { events }, updated_at },
+    });
+    const history = async (uid, week = W, parish = 'markovce') =>
+        call((await import('../api/history.js')).default, { query: { parish, week }, cookies: sessionFor(uid) });
+    const list = async () => (await history(owner)).body.revisions.map((r) => [r.by && r.by.email, r.payload.events.sunday[0]]);
+
+    // Data from before history existed is version one.
+    const legacy = (await history(owner, '2026-10-05')).body.revisions;
+    assert.equal(legacy.length, 1);
+    assert.equal(legacy[0].by, null);
+    assert.deepEqual(legacy[0].payload.events.sunday, ['9:00 sv. Liturgia']);
+
+    await save(editor, { sunday: ['9:00 A1'] }, 1000);
+    await save(editor, { sunday: ['9:00 A2'] }, 1001); // same session → same entry
+    assert.deepEqual(await list(), [['editor@example.com', '9:00 A2']]);
+
+    await save(owner, { sunday: ['9:00 MISTAKE'] }, 1002); // someone else → new entry
+    await save(editor, { sunday: ['9:00 stale'] }, 999); // loses to the newer save → not recorded
+    assert.deepEqual(await list(), [['owner@example.com', '9:00 MISTAKE'], ['editor@example.com', '9:00 A2']]);
+
+    // Same person after the merge window → new entry.
+    await pool.query(`UPDATE week_revisions SET saved_at = NOW() - INTERVAL '10 minutes'`);
+    await save(owner, { sunday: ['9:00 O2'] }, 1003);
+    assert.equal((await list()).length, 3);
+
+    // Restoring = the app saving an old payload again; it becomes the newest version.
+    const old = (await history(owner)).body.revisions.find((r) => r.payload.events.sunday[0] === '9:00 A2');
+    await save(editor, old.payload.events, 1004);
+    const cur = await call(sync, { query: { parish: 'markovce' }, cookies: sessionFor(editor) });
+    assert.deepEqual(cur.body.weeks.find((w) => w.weekKey === W).payload.events.sunday, ['9:00 A2']);
+    assert.deepEqual((await list())[0], ['editor@example.com', '9:00 A2']);
+    assert.equal((await list()).length, 4);
+
+    // Per parish, editors only.
+    await save(stranger, { sunday: ['10:00 Presov'] }, 1000, 'presov');
+    const pr = (await history(stranger, W, 'presov')).body.revisions;
+    assert.deepEqual(pr.map((r) => r.payload.events.sunday[0]), ['10:00 Presov']);
+    assert.equal((await history(stranger)).statusCode, 403);
+    await grant('markovce', viewer, 'viewer');
+    assert.equal((await history(viewer)).statusCode, 403);
+    assert.equal((await history(owner, 'not-a-week')).statusCode, 400);
+    assert.equal((await call((await import('../api/history.js')).default, { query: { parish: 'markovce', week: W } })).statusCode, 401);
+});

@@ -46,6 +46,15 @@ UPDATE parishes SET join_domain = 'krm.sk', join_role = 'viewer' WHERE slug = 'm
 UPDATE parishes SET join_domain = NULL WHERE slug = 'markovce';
 ```
 
+### Version history
+
+Every week save that reaches the server is kept in `week_revisions` (who, when, the whole week).
+Editors open **🕘 História** next to the week picker to see a week's versions and restore one; the
+restore is saved as a new change, so it can be undone the same way. Saves by the same person within
+5 minutes merge into one version, so each entry is roughly one editing session and the version
+before someone's session is always kept. What was on the server before history existed is the first
+version of each week.
+
 ### Adding members by hand
 
 For anyone outside the join domain. The person signs in once (that creates their `users` row), then:

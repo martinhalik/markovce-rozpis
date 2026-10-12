@@ -50,7 +50,7 @@
                 <section class="control-section">
                     <h2>Základné informácie</h2>
                     <div class="form-group">
-                        <label class="week-label">Týždeň: <button class="today-link" onclick="jumpToThisWeek()">Dnes</button></label>
+                        <label class="week-label">Týždeň: <button class="today-link" onclick="jumpToThisWeek()">Dnes</button><button type="button" id="historyBtn" class="today-link history-link" onclick="openHistory()" title="Uložené verzie tohto týždňa – obnovenie pri omylom prepísanom rozpise" hidden>🕘 História</button></label>
                         <div class="week-nav">
                             <button id="prevWeek" class="nav-btn">◀ Predošlý</button>
                             <span id="weekDisplay">--. --. – --. --.</span>
@@ -198,6 +198,20 @@
                     <button class="year-nav-btn" onclick="changeStatsYear(1)">▶</button>
                 </div>
                 <div id="statsContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Week version history (editors): restore a schedule overwritten by mistake -->
+    <div id="historyModal" class="gallery-modal" style="display:none">
+        <div class="gallery-modal-content history-modal-content">
+            <div class="gallery-modal-header">
+                <h2>🕘 História týždňa <span id="historyWeekLabel"></span></h2>
+                <button class="gallery-close-btn" onclick="closeHistory()">✕</button>
+            </div>
+            <div class="gallery-modal-body">
+                <p class="history-intro">Každé uloženie sa zapíše sem. Úpravy jednej osoby v priebehu pár minút sú jedna verzia. Obnovenie staršej verzie sa uloží ako nová zmena, takže sa dá vrátiť aj obnovenie.</p>
+                <div id="historyList" class="history-list"></div>
             </div>
         </div>
     </div>

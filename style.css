@@ -329,6 +329,16 @@ label.week-label {
     margin-left: auto;
 }
 
+/* Push "História" to the far right of the week label row. */
+.history-link {
+    margin-left: auto;
+    text-decoration: none;
+}
+
+.history-link[hidden] {
+    display: none;
+}
+
 .today-link:hover {
     color: var(--purple);
 }
@@ -1172,6 +1182,114 @@ body.week-locked .fasting-mode-label {
 /* ── Stats modal ────────────────────────────────────────────────────────── */
 .stats-modal-content {
     max-width: 900px;
+}
+
+/* ── Week version history ───────────────────────────────────────────────── */
+.history-modal-content {
+    max-width: 640px;
+}
+
+.history-intro {
+    margin-bottom: 16px;
+    color: var(--text-gray);
+    font-size: 0.9rem;
+}
+
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.history-empty {
+    color: var(--text-gray);
+}
+
+.history-item {
+    background: var(--dark-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.history-item summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.history-item summary::-webkit-details-marker {
+    display: none;
+}
+
+.history-item summary::before {
+    content: '▸';
+    color: var(--text-gray);
+    transition: transform 0.15s ease;
+}
+
+.history-item[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.history-when {
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.history-who {
+    flex: 1 1 160px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-gray);
+    font-size: 0.9rem;
+}
+
+.history-current {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(46, 204, 113, 0.18);
+    color: var(--primary-green);
+    font-size: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.history-body {
+    padding: 0 14px 14px 32px;
+}
+
+.history-days {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    margin-bottom: 12px;
+    font-size: 0.88rem;
+}
+
+.history-day {
+    color: var(--text-gray);
+    font-weight: 700;
+}
+
+.history-restore {
+    padding: 8px 14px;
+    background: var(--primary-blue);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-family: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.history-restore:hover {
+    background: var(--purple);
 }
 
 .stats-year-picker {
