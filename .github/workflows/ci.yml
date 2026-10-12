@@ -1,0 +1,70 @@
+# Every push: API tests, then the browser walkthrough at desktop and phone
+# size. The walkthrough's report (e2e-report/index.html, screenshots of every
+# step) is attached to each run as the "e2e-report" artifact, and its
+# pass/fail table is shown on the run's summary page.
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/rozpis_test
+      E2E_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: API tests
+        run: |
+          psql "$E2E_DATABASE_URL" -c "CREATE DATABASE rozpis_test"
+          npm test
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E walkthrough (desktop + mobile)
+        run: npm run e2e
+
+      - name: Report summary
+        if: ${{ !cancelled() }}
+        run: cat e2e-report/summary.md >> "$GITHUB_STEP_SUMMARY" || echo "No e2e report (the walkthrough did not run)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: e2e-report/
+          retention-days: 30
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

@@ -8,9 +8,12 @@
     "arctic": "^3.7.0"
   },
   "scripts": {
-    "test": "node --test --experimental-test-module-mocks \"test/*.test.js\""
+    "test": "node --test --experimental-test-module-mocks \"test/*.test.js\"",
+    "e2e": "playwright test -c e2e/playwright.config.mjs",
+    "check": "npm test && npm run e2e"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "pg": "^8.13.0"
   }
 }

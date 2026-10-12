@@ -1,0 +1,7 @@
+# Tests and tooling: not part of the site.
+e2e/
+test/
+scripts/
+e2e-report/
+playwright-report/
+test-results/

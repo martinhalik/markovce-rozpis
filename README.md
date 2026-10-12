@@ -107,8 +107,21 @@ API request after deploy. It migrates the original single-tenant `weeks`/`settin
 existing data becomes the `markovce` parish. After deploying, the owner signs in once and grants
 themselves admin with the SQL above (role `'admin'`).
 
-Tests: `npm test`. The API tests run against a real, throwaway Postgres —
-`TEST_DATABASE_URL=postgres://… npm test` (the database is wiped); without it they are skipped.
+## Testing
+
+```sh
+eval "$(scripts/test-db.sh)"   # throwaway local Postgres (or set the two URLs yourself)
+npm test                       # API + schema tests against TEST_DATABASE_URL (wiped)
+npm run e2e                    # browser walkthrough, desktop + phone, against E2E_DATABASE_URL
+```
+
+The walkthrough (`e2e/walkthrough.spec.mjs`) plays several people on several devices: signing in,
+editing, a mistake, undo/redo, restoring from history, access rules, parish switching and the public
+calendar, checking the screen and the database at each step. It writes **`e2e-report/index.html`**,
+one page with every step's result and screenshots at desktop and phone size.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs both on every push; open the run to see the
+pass/fail table, and download the `e2e-report` artifact for the screenshots.
 
 ## Icons
 
