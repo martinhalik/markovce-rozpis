@@ -24,7 +24,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/rozpis_test
       E2E_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
@@ -40,8 +40,15 @@ jobs:
 
       - name: API tests
         run: |
+          set -o pipefail
           psql "$E2E_DATABASE_URL" -c "CREATE DATABASE rozpis_test"
-          npm test
+          npm test 2>&1 | tee api-tests.log
+          {
+            echo "## API tests"
+            echo
+            grep -E '^# (tests|pass|fail|skipped)' api-tests.log | sed 's/^# /- /'
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium

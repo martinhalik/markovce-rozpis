@@ -7,6 +7,9 @@ import pg from 'pg';
 import { makeSqlShim, makeReq, makeRes, cookiesFrom } from './helpers.js';
 
 const url = process.env.TEST_DATABASE_URL;
+// Locally these tests skip without a database; in CI that must be a failure,
+// or a misconfigured run would look green.
+if (!url && process.env.CI) throw new Error('TEST_DATABASE_URL must be set in CI');
 const skip = url ? false : 'TEST_DATABASE_URL not set';
 
 let pool, sync, calendar, me, login, callback, logout, signValue;
