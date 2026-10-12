@@ -210,3 +210,36 @@ test('per-parish public calendars', { skip }, async () => {
     assert.equal((await call(calendar, { query: { parish: 'nope' } })).statusCode, 404);
     assert.equal((await call(calendar, { query: { parish: '../x' } })).statusCode, 404);
 });
+
+test('verified @krm.sk accounts join Markovce as editors; nothing else does', { skip }, async () => {
+    const saved = { ...claims };
+    const signIn = async (sub, email) => {
+        Object.assign(claims, { sub, email });
+        const start = await call(login, { query: {} });
+        const done = await call(callback, { query: { code: 'good-code', state: 'st4te' }, cookies: cookiesFrom(start) });
+        return { session: cookiesFrom(done).session };
+    };
+    const parishesOf = async (cookies) => (await call(me, { cookies })).body.parishes;
+    try {
+        const member = await signIn('krm-1', 'Someone@KRM.sk');
+        assert.deepEqual(await parishesOf(member), [{ slug: 'markovce', name: 'Pravoslávni Markovce', role: 'editor' }]);
+        const week = { weekKey: '2026-11-02', payload: { events: {} }, updated_at: 10 };
+        const res = await call(sync, { method: 'POST', query: { parish: 'markovce' }, body: week, cookies: member });
+        assert.equal(res.statusCode, 200);
+
+        for (const [sub, email] of [
+            ['krm-2', 'kid@student.krm.sk'],
+            ['krm-3', 'someone@notkrm.sk'],
+            ['krm-4', 'someone@krm.sk.evil.test'],
+        ]) {
+            assert.deepEqual(await parishesOf(await signIn(sub, email)), [], email);
+        }
+
+        // An existing role is never changed by signing in again.
+        await pool.query(`UPDATE parish_members SET role = 'admin'
+            WHERE user_id = (SELECT id FROM users WHERE google_sub = 'krm-1')`);
+        assert.equal((await parishesOf(await signIn('krm-1', 'someone@krm.sk')))[0].role, 'admin');
+    } finally {
+        Object.assign(claims, saved);
+    }
+});

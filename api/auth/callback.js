@@ -41,7 +41,19 @@ export default async function handler(req, res) {
             SET email = EXCLUDED.email, name = EXCLUDED.name, avatar_url = EXCLUDED.avatar_url
             RETURNING id
         `;
-        startSession(res, rows[0].id);
+        const userId = rows[0].id;
+        // Slack-style auto-join: parishes with join_domain admit anyone whose
+        // verified email is exactly @<that domain> (not a subdomain), as
+        // join_role (editor or viewer; never admin). An existing membership
+        // is left as it is, so this never changes anyone's role.
+        const email = claims.email.toLowerCase();
+        const domain = email.slice(email.lastIndexOf('@') + 1);
+        await sql`
+            INSERT INTO parish_members (parish_id, user_id, role)
+            SELECT id, ${userId}, join_role FROM parishes WHERE join_domain = ${domain}
+            ON CONFLICT (parish_id, user_id) DO NOTHING
+        `;
+        startSession(res, userId);
         return redirect(res, saved.returnTo);
     } catch (e) {
         console.error('auth callback error', e);

@@ -32,9 +32,23 @@ the device, and switching parish reloads the page. Signed in but not a member of
 Every parish-scoped endpoint goes through `requireMember(req, parishSlug, minRole)` in
 `lib/auth.js` — the database does not enforce tenancy, so a new endpoint must use it too.
 
-### Adding members
+### Who gets in
 
-There is no UI yet. The person signs in once (that creates their `users` row), then:
+Like Slack's "anyone with an @company email can join": a parish can have a `join_domain`, and
+anyone who signs in with a verified Google account at exactly that domain becomes a member with
+the parish's `join_role` (`editor` or `viewer`; never admin). Markovce is set to **@krm.sk → editor**.
+Subdomains don't count (`@student.krm.sk` is not `@krm.sk`), and signing in never changes the role
+of someone who is already a member.
+
+```sql
+-- change or switch off auto-join
+UPDATE parishes SET join_domain = 'krm.sk', join_role = 'viewer' WHERE slug = 'markovce';
+UPDATE parishes SET join_domain = NULL WHERE slug = 'markovce';
+```
+
+### Adding members by hand
+
+For anyone outside the join domain. The person signs in once (that creates their `users` row), then:
 
 ```sql
 INSERT INTO parish_members (parish_id, user_id, role)

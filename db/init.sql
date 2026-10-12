@@ -20,9 +20,11 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS parishes (
     id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    slug       TEXT UNIQUE NOT NULL,
-    name       TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    slug        TEXT UNIQUE NOT NULL,
+    name        TEXT NOT NULL,
+    join_domain TEXT,
+    join_role   TEXT NOT NULL DEFAULT 'viewer' CHECK (join_role IN ('editor', 'viewer')),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS parish_members (
@@ -35,7 +37,8 @@ CREATE TABLE IF NOT EXISTS parish_members (
 
 CREATE INDEX IF NOT EXISTS parish_members_user_id_idx ON parish_members (user_id);
 
-INSERT INTO parishes (slug, name) VALUES ('markovce', 'Pravoslávni Markovce')
+INSERT INTO parishes (slug, name, join_domain, join_role)
+    VALUES ('markovce', 'Pravoslávni Markovce', 'krm.sk', 'editor')
     ON CONFLICT (slug) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS weeks (
