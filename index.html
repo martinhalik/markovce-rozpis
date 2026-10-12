@@ -50,7 +50,7 @@
                 <section class="control-section">
                     <h2>Základné informácie</h2>
                     <div class="form-group">
-                        <label class="week-label">Týždeň: <button class="today-link" onclick="jumpToThisWeek()">Dnes</button><button type="button" id="historyBtn" class="today-link history-link" onclick="openHistory()" title="Uložené verzie tohto týždňa – obnovenie pri omylom prepísanom rozpise" hidden>🕘 História</button></label>
+                        <label class="week-label">Týždeň: <button class="today-link" onclick="jumpToThisWeek()">Dnes</button><span class="week-tools"><button type="button" id="undoBtn" class="week-tool-btn" onclick="undoHistory.undo()" title="Späť – vrátiť poslednú zmenu (Ctrl/⌘+Z)" disabled>↶ Späť</button><button type="button" id="redoBtn" class="week-tool-btn" onclick="undoHistory.redo()" title="Znova – zopakovať vrátenú zmenu (Ctrl/⌘+Shift+Z)" disabled>↷ Znova</button><button type="button" id="historyBtn" class="today-link history-link" onclick="openHistory()" title="Uložené verzie tohto týždňa – obnovenie pri omylom prepísanom rozpise" hidden>🕘 História</button></span></label>
                         <div class="week-nav">
                             <button id="prevWeek" class="nav-btn">◀ Predošlý</button>
                             <span id="weekDisplay">--. --. – --. --.</span>

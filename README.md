@@ -55,6 +55,15 @@ restore is saved as a new change, so it can be undone the same way. Saves by the
 before someone's session is always kept. What was on the server before history existed is the first
 version of each week.
 
+### Undo / redo
+
+**↶ Späť** / **↷ Znova** next to the week picker (or Ctrl/⌘+Z, Ctrl/⌘+Shift+Z, Ctrl+Y outside text
+fields) step back and forth through this session's edits of the current week; typing that runs
+together counts as one step. Undo and redo are ordinary edits, so they save and sync. The steps
+live only in the open page; anything older is in the version history above. If a newer copy of the
+week arrives from another device, that week's steps are dropped so undo can't revert someone
+else's change.
+
 ### Adding members by hand
 
 For anyone outside the join domain. The person signs in once (that creates their `users` row), then:

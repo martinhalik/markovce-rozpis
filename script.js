@@ -1269,7 +1269,11 @@ function saveToLocalStorage(opts = {}) {
     // `dirty` defaults to true (a real edit); navigation passes { dirty: false }
     // so that merely switching weeks persists the session pointer without
     // stamping a fresh timestamp on — and re-uploading — an unedited week.
+    const dirty = opts.dirty !== false;
+    const key = state.currentWeekStart ? currentWeekKey() : null;
+    const before = dirty && key ? state.archive[key] : undefined;
     snapshotCurrentWeekToArchive(opts);
+    if (dirty && key) undoHistory.recordEdit(key, before, state.archive[key]);
     if (_saveTimer) clearTimeout(_saveTimer);
     _saveTimer = setTimeout(flushSaveToLocalStorage, SAVE_DEBOUNCE_MS);
 }
@@ -1300,6 +1304,111 @@ function flushSaveToLocalStorage() {
         console.error('Error saving to localStorage:', error);
     }
 }
+
+// Re-render everything that shows the current week, after its data was
+// replaced wholesale (undo/redo, restoring a version, a newer copy synced in).
+function refreshCurrentWeekUI() {
+    updateUI();
+    renderDayDetails();
+    renderWeekFeastHints();
+    updatePreview();
+    document.getElementById('fastingMode').checked = state.fastingMode;
+    applyLockState();
+}
+
+// ── Undo / redo ────────────────────────────────────────────────────────────
+// Per-week stacks of earlier versions of the week, kept in memory for this
+// page (the server-side version history covers everything older). Every
+// real edit goes through saveToLocalStorage, which reports here with the
+// week as it was just before. Edits less than STEP_GAP_MS apart (typing a
+// feast name, dragging) form one step. Undo/redo apply a version as a normal
+// edit, so it is saved and synced like any other change.
+const undoHistory = (() => {
+    const STEP_GAP_MS = 1000;
+    const MAX_STEPS = 100;
+    const stacks = new Map(); // weekKey → { undo: [], redo: [], lastEditAt }
+    let applying = false;
+
+    const clone = (entry) => JSON.parse(JSON.stringify(entry));
+    // updatedAt changes on every save; it isn't part of what the user sees.
+    const sameContent = (a, b) => JSON.stringify({ ...a, updatedAt: 0 }) === JSON.stringify({ ...b, updatedAt: 0 });
+
+    function stackFor(key) {
+        if (!stacks.has(key)) stacks.set(key, { undo: [], redo: [], lastEditAt: 0 });
+        return stacks.get(key);
+    }
+
+    function recordEdit(key, before, after, { newStep = false } = {}) {
+        if (applying || !before || !after || sameContent(before, after)) return;
+        const st = stackFor(key);
+        const now = Date.now();
+        if (newStep || !st.undo.length || now - st.lastEditAt > STEP_GAP_MS) {
+            st.undo.push(clone(before));
+            if (st.undo.length > MAX_STEPS) st.undo.shift();
+        }
+        st.lastEditAt = now;
+        st.redo.length = 0;
+        renderButtons();
+    }
+
+    // A newer copy of the week arrived from another device: the old steps
+    // would silently revert someone else's changes, so drop them.
+    function forgetWeek(key) {
+        if (stacks.delete(key)) renderButtons();
+    }
+
+    function move(from, to) {
+        if (!state.currentWeekStart) return;
+        const key = currentWeekKey();
+        const st = stackFor(key);
+        if (!st[from].length) return;
+        if (sync.isReadOnly() || !guardEditable()) return;
+        const current = state.archive[key];
+        const target = st[from].pop();
+        if (current) st[to].push(clone(current));
+        st.lastEditAt = 0; // the next edit starts a new step
+        applying = true;
+        try {
+            state.archive[key] = { ...target, updatedAt: Date.now() };
+            loadWeekFromArchive(key);
+            refreshCurrentWeekUI();
+            saveToLocalStorage();
+        } finally {
+            applying = false;
+        }
+        renderButtons();
+    }
+
+    function renderButtons() {
+        const st = state.currentWeekStart ? stacks.get(currentWeekKey()) : null;
+        const readOnly = sync.isReadOnly();
+        const undoBtn = document.getElementById('undoBtn');
+        const redoBtn = document.getElementById('redoBtn');
+        if (undoBtn) undoBtn.disabled = readOnly || !(st && st.undo.length);
+        if (redoBtn) redoBtn.disabled = readOnly || !(st && st.redo.length);
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+        const k = e.key.toLowerCase();
+        const isUndo = k === 'z' && !e.shiftKey;
+        const isRedo = (k === 'z' && e.shiftKey) || (k === 'y' && !e.shiftKey);
+        if (!isUndo && !isRedo) return;
+        // Inside a text field the browser's own undo of the typing applies.
+        const t = e.target;
+        if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+        e.preventDefault();
+        if (isUndo) move('undo', 'redo'); else move('redo', 'undo');
+    });
+
+    return {
+        recordEdit,
+        forgetWeek,
+        renderButtons,
+        undo: () => move('undo', 'redo'),
+        redo: () => move('redo', 'undo'),
+    };
+})();
 
 function loadFromLocalStorage() {
     try {
@@ -1678,6 +1787,7 @@ const sync = (() => {
                 const localTs = (local && local.updatedAt) ? local.updatedAt : 0;
                 if (!local || w.updated_at > localTs || (readOnly && w.updated_at !== localTs)) {
                     state.archive[key] = { ...w.payload, updatedAt: w.updated_at };
+                    undoHistory.forgetWeek(key);
                     if (key === curKey) touchedCurrentWeek = true;
                 } else if (w.updated_at < localTs) {
                     dirtyWeeks.add(key);
@@ -1717,12 +1827,7 @@ const sync = (() => {
             // archive on next load, but keeps the cache internally consistent.)
             if (touchedCurrentWeek && curKey && hasArchiveEntry(curKey)) {
                 loadWeekFromArchive(curKey);
-                updateUI();
-                renderDayDetails();
-                renderWeekFeastHints();
-                updatePreview();
-                document.getElementById('fastingMode').checked = state.fastingMode;
-                applyLockState();
+                refreshCurrentWeekUI();
             }
 
             // Persist merged state to offline cache — write directly to avoid
@@ -2911,6 +3016,9 @@ function unlockCurrentWeek() {
 
 function applyLockState() {
     const locked = isCurrentWeekLocked();
+    // Runs on every week change and role change, which is also when the
+    // undo/redo buttons' state changes.
+    undoHistory.renderButtons();
     document.body.classList.toggle('week-locked', locked);
 
     const banner = document.getElementById('weekLockBanner');
@@ -3049,16 +3157,14 @@ function restoreRevision(rev) {
         'Súčasný rozpis tohto týždňa sa ňou nahradí. Aj obnovenie sa uloží do histórie, takže sa dá vrátiť.');
     if (!ok) return;
     const key = currentWeekKey();
+    const before = state.archive[key];
     state.archive[key] = { ...rev.payload, updatedAt: Date.now() };
     loadWeekFromArchive(key);
-    updateUI();
-    renderDayDetails();
-    renderWeekFeastHints();
-    updatePreview();
-    document.getElementById('fastingMode').checked = state.fastingMode;
-    applyLockState();
+    refreshCurrentWeekUI();
     // A real edit: stamps a fresh timestamp and pushes it to the server.
     saveToLocalStorage();
+    // Its own undo step, so Späť brings back what the restore replaced.
+    undoHistory.recordEdit(key, before, state.archive[key], { newStep: true });
     closeHistory();
 }
 // ───────────────────────────────────────────────────────────────────────────

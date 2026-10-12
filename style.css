@@ -311,6 +311,7 @@ body {
 /* Week Navigation */
 label.week-label {
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
     gap: 8px;
 }
@@ -329,9 +330,37 @@ label.week-label {
     margin-left: auto;
 }
 
-/* Push "História" to the far right of the week label row. */
-.history-link {
+/* Undo / redo / history, at the far right of the week label row. */
+.week-tools {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
     margin-left: auto;
+}
+
+.week-tool-btn {
+    padding: 2px 8px;
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--primary-blue);
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.week-tool-btn:hover:not(:disabled) {
+    border-color: var(--primary-blue);
+}
+
+.week-tool-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.history-link {
+    margin-left: 4px;
     text-decoration: none;
 }
 
