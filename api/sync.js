@@ -40,8 +40,10 @@ export default async function handler(req, res) {
                 ) {
                     return res.status(400).json({ error: 'bad body' });
                 }
-                // One statement: save the week and, if the save won, record
-                // it in the version history. Saves by the same person within
+                // One statement: save the week and, if the save won and
+                // changed what the week says, record it in the version
+                // history. (The payload carries its own updatedAt, so that is
+                // left out of the comparison.) Saves by the same person within
                 // REVISION_MERGE_WINDOW of their previous one update that
                 // version instead of adding another, so history reads as one
                 // entry per editing session — and the version before the
@@ -55,19 +57,25 @@ export default async function handler(req, res) {
                         WHERE EXCLUDED.updated_at > weeks.updated_at
                         RETURNING parish_id, week_key, payload, updated_at
                     ), latest AS (
-                        SELECT id, user_id, saved_at FROM week_revisions
+                        SELECT id, user_id, saved_at, payload FROM week_revisions
                         WHERE parish_id = ${parish.id} AND week_key = ${weekKey}
                         ORDER BY id DESC LIMIT 1
+                    ), changed AS (
+                        SELECT saved.* FROM saved
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM latest
+                            WHERE (latest.payload - 'updatedAt') = (saved.payload - 'updatedAt')
+                        )
                     ), merged AS (
                         UPDATE week_revisions r
-                        SET payload = saved.payload, updated_at = saved.updated_at, saved_at = NOW()
-                        FROM saved, latest
+                        SET payload = changed.payload, updated_at = changed.updated_at, saved_at = NOW()
+                        FROM changed, latest
                         WHERE r.id = latest.id AND latest.user_id = ${userId}
                           AND latest.saved_at > NOW() - ${REVISION_MERGE_WINDOW}::interval
                         RETURNING r.id
                     )
                     INSERT INTO week_revisions (parish_id, week_key, payload, updated_at, user_id)
-                    SELECT parish_id, week_key, payload, updated_at, ${userId} FROM saved
+                    SELECT parish_id, week_key, payload, updated_at, ${userId} FROM changed
                     WHERE NOT EXISTS (SELECT 1 FROM merged)
                 `;
                 return res.status(200).json({ ok: true });

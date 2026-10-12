@@ -268,14 +268,18 @@ test('every accepted week save lands in the version history', { skip }, async ()
     await save(editor, { sunday: ['9:00 stale'] }, 999); // loses to the newer save → not recorded
     assert.deepEqual(await list(), [['owner@example.com', '9:00 MISTAKE'], ['editor@example.com', '9:00 A2']]);
 
+    // A save that changes nothing (only the timestamp) adds no version.
+    await save(editor, { sunday: ['9:00 MISTAKE'] }, 1003);
+    assert.deepEqual(await list(), [['owner@example.com', '9:00 MISTAKE'], ['editor@example.com', '9:00 A2']]);
+
     // Same person after the merge window → new entry.
     await pool.query(`UPDATE week_revisions SET saved_at = NOW() - INTERVAL '10 minutes'`);
-    await save(owner, { sunday: ['9:00 O2'] }, 1003);
+    await save(owner, { sunday: ['9:00 O2'] }, 1004);
     assert.equal((await list()).length, 3);
 
     // Restoring = the app saving an old payload again; it becomes the newest version.
     const old = (await history(owner)).body.revisions.find((r) => r.payload.events.sunday[0] === '9:00 A2');
-    await save(editor, old.payload.events, 1004);
+    await save(editor, old.payload.events, 1005);
     const cur = await call(sync, { query: { parish: 'markovce' }, cookies: sessionFor(editor) });
     assert.deepEqual(cur.body.weeks.find((w) => w.weekKey === W).payload.events.sunday, ['9:00 A2']);
     assert.deepEqual((await list())[0], ['editor@example.com', '9:00 A2']);

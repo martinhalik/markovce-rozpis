@@ -1964,7 +1964,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Only load standard week if no saved events exist
     if (!loaded) {
-        loadStandardWeek();
+        loadStandardWeek({ dirty: false });
     }
 
     // Sync fasting mode checkbox with state
@@ -2011,7 +2011,10 @@ function initializeEventListeners() {
             btn.classList.add('active');
             state.currentDay = btn.dataset.day;
             renderDayDetails();
-            saveToLocalStorage();
+            // Passive: picking a day to look at is not an edit. Stamping it
+            // would mark this device's copy of the week newest and overwrite
+            // newer edits from another device (see jumpToThisWeek).
+            saveToLocalStorage({ dirty: false });
         });
     });
 
@@ -2360,7 +2363,10 @@ function handleGalleryUpload(e) {
     e.target.value = '';
 }
 
-function loadStandardWeek() {
+// `dirty: false` is for filling in a device that has nothing saved yet: that
+// is not an edit, and stamping it "now" would make the template look newer
+// than the real schedule on the server and overwrite it on first sync.
+function loadStandardWeek({ dirty = true } = {}) {
     if (!guardEditable()) return;
     state.events = {
         monday: [],
@@ -2382,7 +2388,7 @@ function loadStandardWeek() {
     };
     renderDayDetails();
     updatePreview();
-    saveToLocalStorage();
+    saveToLocalStorage({ dirty });
 }
 
 function loadFastingWeek() {
