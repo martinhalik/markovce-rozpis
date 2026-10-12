@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Generátor rozpisu - Pravoslávni Markovce</title>
-    <link rel="stylesheet" href="style.css?v=2026.10.08">
+    <link rel="stylesheet" href="style.css?v=2026.10.12">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -19,13 +19,16 @@
             <div class="header-content">
                 <div class="header-text">
                     <h1>Generátor týždenného rozpisu</h1>
-                    <p>Generátor liturgického rozpisu pre farnosť Markovce</p>
+                    <p id="parishSubtitle">Generátor liturgického rozpisu pre farnosť Markovce</p>
                 </div>
                 <nav class="header-nav" aria-label="Hlavná navigácia">
+                    <!-- Filled in by sync once /api/me answers; the picker shows only with 2+ parishes. -->
+                    <select id="parishSelect" class="header-nav-select" aria-label="Farnosť" hidden></select>
                     <button class="header-nav-btn" onclick="openStats()">
                         <span class="header-nav-icon" aria-hidden="true">📊</span>
                         <span class="header-nav-label">Štatistiky</span>
                     </button>
+                    <button type="button" id="accountBtn" class="header-nav-btn" hidden></button>
                 </nav>
             </div>
         </header>
@@ -278,7 +281,7 @@
         </p>
     </footer>
 
-    <script src="script.js?v=2026.10.08"></script>
+    <script src="script.js?v=2026.10.12"></script>
 </body>
 
 </html>

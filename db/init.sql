@@ -1,11 +1,91 @@
+-- Schema for markovce-rozpis: users, parishes, memberships, per-parish weeks/settings.
+--
+-- Idempotent: creates a fresh database, or migrates the original single-tenant
+-- weeks/settings tables in place (adds parish_id, backfills the Markovce
+-- parish, widens the primary keys). The API applies the same statements
+-- automatically on first request (lib/schema.js); keep the two identical.
+--
+-- Apply by hand with:  psql "$POSTGRES_URL" -f db/init.sql
+
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS users (
+    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    google_sub TEXT UNIQUE NOT NULL,
+    email      TEXT NOT NULL,
+    name       TEXT,
+    avatar_url TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS parishes (
+    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    slug       TEXT UNIQUE NOT NULL,
+    name       TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS parish_members (
+    parish_id  BIGINT NOT NULL REFERENCES parishes(id) ON DELETE CASCADE,
+    user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role       TEXT NOT NULL CHECK (role IN ('admin', 'editor', 'viewer')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (parish_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS parish_members_user_id_idx ON parish_members (user_id);
+
+INSERT INTO parishes (slug, name) VALUES ('markovce', 'Pravoslávni Markovce')
+    ON CONFLICT (slug) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS weeks (
-  week_key TEXT PRIMARY KEY,
-  payload JSONB NOT NULL,
-  updated_at BIGINT NOT NULL
+    parish_id  BIGINT NOT NULL REFERENCES parishes(id),
+    week_key   TEXT NOT NULL,
+    payload    JSONB NOT NULL,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (parish_id, week_key)
 );
 
 CREATE TABLE IF NOT EXISTS settings (
-  key TEXT PRIMARY KEY,
-  value JSONB NOT NULL,
-  updated_at BIGINT NOT NULL
+    parish_id  BIGINT NOT NULL REFERENCES parishes(id),
+    key        TEXT NOT NULL,
+    value      JSONB NOT NULL,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (parish_id, key)
 );
+
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'weeks' AND column_name = 'parish_id'
+    ) THEN
+        ALTER TABLE weeks ADD COLUMN parish_id BIGINT REFERENCES parishes(id);
+        UPDATE weeks SET parish_id = (SELECT id FROM parishes WHERE slug = 'markovce');
+        ALTER TABLE weeks ALTER COLUMN parish_id SET NOT NULL;
+        ALTER TABLE weeks DROP CONSTRAINT weeks_pkey;
+        ALTER TABLE weeks ADD PRIMARY KEY (parish_id, week_key);
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'settings' AND column_name = 'parish_id'
+    ) THEN
+        ALTER TABLE settings ADD COLUMN parish_id BIGINT REFERENCES parishes(id);
+        UPDATE settings SET parish_id = (SELECT id FROM parishes WHERE slug = 'markovce');
+        ALTER TABLE settings ALTER COLUMN parish_id SET NOT NULL;
+        ALTER TABLE settings DROP CONSTRAINT settings_pkey;
+        ALTER TABLE settings ADD PRIMARY KEY (parish_id, key);
+    END IF;
+END $$;
+
+COMMIT;
+
+-- After the owner signs in once with Google (which creates their users row),
+-- make them admin of the Markovce parish:
+--
+--   INSERT INTO parish_members (parish_id, user_id, role)
+--   SELECT p.id, u.id, 'admin' FROM parishes p, users u
+--   WHERE p.slug = 'markovce' AND u.email = 'martin@mh1.cz'
+--   ON CONFLICT (parish_id, user_id) DO UPDATE SET role = EXCLUDED.role;

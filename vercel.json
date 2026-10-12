@@ -2,7 +2,9 @@
   "version": 2,
   "rewrites": [
     { "source": "/kalendar.ics", "destination": "/api/calendar" },
-    { "source": "/calendar.ics", "destination": "/api/calendar" }
+    { "source": "/calendar.ics", "destination": "/api/calendar" },
+    { "source": "/p/:parish/kalendar.ics", "destination": "/api/calendar?parish=:parish" },
+    { "source": "/p/:parish/calendar.ics", "destination": "/api/calendar?parish=:parish" }
   ],
   "headers": [
     { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }] },

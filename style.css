@@ -171,6 +171,45 @@ body {
     line-height: 1;
 }
 
+/* Class-level display rules would otherwise override the [hidden] attribute. */
+.header-nav-btn[hidden],
+.header-nav-select[hidden],
+.week-lock-unlock[hidden] {
+    display: none;
+}
+
+.header-nav-select {
+    padding: 12px 14px;
+    max-width: 240px;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 12px;
+    color: white;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+}
+
+.header-nav-select:focus-visible {
+    outline: 2px solid white;
+    outline-offset: 2px;
+}
+
+/* The open dropdown list uses the OS's light background. */
+.header-nav-select option {
+    color: #222;
+}
+
+.account-avatar {
+    display: block;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
 .header h1 {
     font-size: 2.5rem;
     font-weight: 800;
@@ -1038,7 +1077,9 @@ label.week-label {
 .sync-status[data-status="synced"]    { background: #2ecc71; }
 .sync-status[data-status="uploading"] { background: #3498db; }
 .sync-status[data-status="offline"]   { background: #7f8c8d; opacity: 0.65; }
-.sync-status[data-status="nokey"]     { background: #e67e22; opacity: 0.9; pointer-events: auto; cursor: pointer; }
+.sync-status[data-status="readonly"]  { background: #16a085; }
+.sync-status[data-status="signedout"],
+.sync-status[data-status="nomember"]  { background: #e67e22; opacity: 0.9; pointer-events: auto; cursor: pointer; }
 .sync-status[data-status="hidden"]    { opacity: 0; }
 
 /* ── Past-week lock banner ──────────────────────────────────────────────── */
@@ -1643,11 +1684,18 @@ body.week-locked .fasting-mode-label {
 
     .header-nav {
         justify-content: center;
+        flex-wrap: wrap;
     }
 
     .header-nav-btn {
-        width: 100%;
+        flex: 1 1 0;
+        min-width: 0;
         justify-content: center;
+    }
+
+    .header-nav-select {
+        flex: 1 1 100%;
+        max-width: none;
     }
 
     .stats-summary {

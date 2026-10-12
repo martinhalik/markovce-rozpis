@@ -11,9 +11,72 @@ them is still on an old build (reload it; the `Cache-Control: no-cache` headers 
 make a plain reload enough).
 
 Cross-device state lives on the server (`/api/sync`) and is pulled on page load, whenever the app
-comes back into view, and every 5 minutes while it stays open. A device with no sync key shows an
-orange *Bez synchronizácie – zadať kľúč* pill (tap it to enter the key); until a key is entered
-that device is offline-only and will drift from the others.
+comes back into view, and every 5 minutes while it stays open. A signed-out device shows an orange
+*Bez synchronizácie – prihlásiť sa* pill (tap it, or *Prihlásiť sa* in the header, to sign in with
+Google); until then that device is offline-only and will drift from the others.
+
+## Accounts and parishes
+
+People sign in with Google. Each user belongs to one or more parishes with a role:
+
+| role     | can                                                         |
+|----------|-------------------------------------------------------------|
+| `viewer` | see the parish's schedule (read-only in the app)            |
+| `editor` | also edit weeks and the calendar style                      |
+| `admin`  | same as editor for now (member management is SQL, below)    |
+
+With two or more parishes a picker appears in the header. Each parish has its own offline cache on
+the device, and switching parish reloads the page. Signed in but not a member of any parish shows
+*Bez prístupu k farnosti*.
+
+Every parish-scoped endpoint goes through `requireMember(req, parishSlug, minRole)` in
+`lib/auth.js` — the database does not enforce tenancy, so a new endpoint must use it too.
+
+### Adding members
+
+There is no UI yet. The person signs in once (that creates their `users` row), then:
+
+```sql
+INSERT INTO parish_members (parish_id, user_id, role)
+SELECT p.id, u.id, 'editor' FROM parishes p, users u
+WHERE p.slug = 'markovce' AND u.email = 'someone@gmail.com'
+ON CONFLICT (parish_id, user_id) DO UPDATE SET role = EXCLUDED.role;
+```
+
+A new parish is `INSERT INTO parishes (slug, name) VALUES ('presov', 'Pravoslávni Prešov');`
+(slug: lowercase letters, digits, dashes). Removing a row from `parish_members` takes effect on that
+person's next request.
+
+### Public calendar
+
+Anyone can subscribe without signing in:
+
+- `/p/<slug>/kalendar.ics` — any parish
+- `/kalendar.ics` — Markovce (the original URL, kept working)
+
+## Setup
+
+Environment variables (Vercel → Project → Settings → Environment Variables):
+
+| name                   | value                                                                  |
+|------------------------|------------------------------------------------------------------------|
+| `POSTGRES_URL`         | set by the Vercel Postgres integration                                 |
+| `GOOGLE_CLIENT_ID`     | OAuth client (type *Web application*) from Google Cloud console        |
+| `GOOGLE_CLIENT_SECRET` | its secret                                                             |
+| `SESSION_SECRET`       | 32+ random characters (`openssl rand -base64 48`); signs session cookies |
+| `APP_ORIGIN`           | production origin, e.g. `https://rozpis.example.sk` (optional; without it the request's host is used) |
+
+In the Google OAuth client add `https://<your-domain>/api/auth/callback` as an authorised redirect
+URI (and `http://localhost:3000/api/auth/callback` for `vercel dev`). `PARISH_KEY` is no longer used
+and can be deleted.
+
+The schema (`db/init.sql`, same statements as `lib/schema.js`) is applied automatically on the first
+API request after deploy. It migrates the original single-tenant `weeks`/`settings` tables in place:
+existing data becomes the `markovce` parish. After deploying, the owner signs in once and grants
+themselves admin with the SQL above (role `'admin'`).
+
+Tests: `npm test`. The API tests run against a real, throwaway Postgres —
+`TEST_DATABASE_URL=postgres://… npm test` (the database is wiped); without it they are skipped.
 
 ## Icons
 

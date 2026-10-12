@@ -4,6 +4,13 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@vercel/postgres": "^0.10.0"
+    "@vercel/postgres": "^0.10.0",
+    "arctic": "^3.7.0"
+  },
+  "scripts": {
+    "test": "node --test --experimental-test-module-mocks \"test/*.test.js\""
+  },
+  "devDependencies": {
+    "pg": "^8.13.0"
   }
 }
