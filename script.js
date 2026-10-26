@@ -2277,7 +2277,8 @@ function initializeModalDismissHandlers() {
     const modals = [
         { id: 'galleryModal',      close: closeGallery },
         { id: 'statsModal',        close: closeStats },
-        { id: 'imageEditorModal',  close: closeImageEditor }
+        { id: 'imageEditorModal',  close: closeImageEditor },
+        { id: 'exportPreviewModal', close: closeExportPreview }
     ];
 
     // Backdrop click (click lands on the modal backdrop itself, not the inner content card)
@@ -2698,10 +2699,61 @@ function generateImage() {
 
     const fileName = `rozpis_${state.currentWeekStart.getDate()}_${end.getDate()}_${monthNames[end.getMonth()]}.png`;
 
+    // Build the PNG synchronously (toDataURL, not async toBlob) so the click's
+    // user activation is still live when navigator.share() runs — iOS Safari
+    // rejects share() once it has expired.
+    const dataUrl = exportCanvas.toDataURL('image/png');
+    const blob = dataUrlToBlob(dataUrl);
+
+    // Phones/tablets: hand the file to the share sheet ("Uložiť obrázok" puts it
+    // in Photos). An <a download> with a data URL silently does nothing on iOS,
+    // especially when the app runs from the home screen.
+    const isTouchDevice = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    if (isTouchDevice && typeof File === 'function' && navigator.canShare) {
+        const file = new File([blob], fileName, { type: 'image/png' });
+        if (navigator.canShare({ files: [file] })) {
+            navigator.share({ files: [file] }).catch(err => {
+                if (err && err.name === 'AbortError') return; // user closed the sheet
+                openExportPreview(dataUrl);
+            });
+            return;
+        }
+    }
+
+    // Desktop (and phones without file sharing): regular download via a blob URL.
+    // The link must be in the DOM for Firefox, and the URL must outlive the click.
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.download = fileName;
-    link.href = exportCanvas.toDataURL('image/png');
+    link.href = url;
+    link.style.display = 'none';
+    document.body.appendChild(link);
     link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+    // Old mobile browsers ignore the download attribute — show the image so it
+    // can be saved with a long press.
+    if (isTouchDevice) openExportPreview(dataUrl);
+}
+
+function dataUrlToBlob(dataUrl) {
+    const [header, base64] = dataUrl.split(',');
+    const mime = header.match(/:(.*?);/)[1];
+    const bytes = atob(base64);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+}
+
+function openExportPreview(dataUrl) {
+    document.getElementById('exportPreviewImg').src = dataUrl;
+    document.getElementById('exportPreviewModal').style.display = 'flex';
+}
+
+function closeExportPreview() {
+    document.getElementById('exportPreviewModal').style.display = 'none';
+    document.getElementById('exportPreviewImg').removeAttribute('src');
 }
 
 // ── Past-week locking ──────────────────────────────────────────────────────

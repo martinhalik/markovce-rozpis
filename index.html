@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Generátor rozpisu - Pravoslávni Markovce</title>
-    <link rel="stylesheet" href="style.css?v=2026.10.08">
+    <link rel="stylesheet" href="style.css?v=2026.10.26">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -199,6 +199,20 @@
         </div>
     </div>
 
+    <!-- Export Preview Modal (fallback when the phone can't download/share) -->
+    <div id="exportPreviewModal" class="gallery-modal" style="display:none">
+        <div class="gallery-modal-content export-preview-content">
+            <div class="gallery-modal-header">
+                <h2>📥 Uložiť obrázok</h2>
+                <button class="gallery-close-btn" onclick="closeExportPreview()">✕</button>
+            </div>
+            <div class="gallery-modal-body">
+                <p class="export-preview-hint">Podržte prst na obrázku a zvoľte <strong>Uložiť do Fotiek</strong> / <strong>Stiahnuť obrázok</strong>.</p>
+                <img id="exportPreviewImg" class="export-preview-img" alt="Rozpis na týždeň">
+            </div>
+        </div>
+    </div>
+
     <!-- Icon Gallery Modal -->
     <div id="galleryModal" class="gallery-modal" style="display:none">
         <div class="gallery-modal-content">
@@ -278,7 +292,7 @@
         </p>
     </footer>
 
-    <script src="script.js?v=2026.10.08"></script>
+    <script src="script.js?v=2026.10.26"></script>
 </body>
 
 </html>

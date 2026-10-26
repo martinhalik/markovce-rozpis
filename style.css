@@ -2396,3 +2396,21 @@ body.week-locked .fasting-mode-label {
         grid-template-columns: 1fr;
     }
 }
+/* Export preview (long-press-to-save fallback on phones) */
+.export-preview-content {
+    max-width: 640px;
+}
+
+.export-preview-hint {
+    margin: 0 0 12px;
+    font-size: 0.95rem;
+}
+
+.export-preview-img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+    -webkit-touch-callout: default;
+    user-select: auto;
+}
