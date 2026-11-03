@@ -1035,17 +1035,26 @@ label.week-label {
 }
 
 /* ── Sync status indicator ──────────────────────────────────────────────── */
+/* In normal flow (not fixed), right-aligned under the header. A fixed pill
+   covered the day buttons on a 375px screen and stole their taps. */
 .sync-status {
-    position: fixed;
-    bottom: 68px;
-    right: 24px;
+    position: static;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-height: 24px;
+    min-width: 24px;
+    margin: 0 0 16px auto;
     padding: 5px 12px;
     border-radius: 999px;
     font-size: 0.75rem;
     font-weight: 600;
+    line-height: 1.3;
     color: white;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 1900;
     opacity: 0.88;
     pointer-events: none;
     transition: background 0.3s ease, opacity 0.3s ease;
@@ -1055,7 +1064,7 @@ label.week-label {
 .sync-status[data-status="uploading"] { background: #3498db; }
 .sync-status[data-status="offline"]   { background: #7f8c8d; opacity: 0.65; }
 .sync-status[data-status="nokey"]     { background: #e67e22; opacity: 0.9; pointer-events: auto; cursor: pointer; }
-.sync-status[data-status="hidden"]    { opacity: 0; }
+.sync-status[data-status="hidden"]    { display: none; }
 
 /* ── Past-week lock banner ──────────────────────────────────────────────── */
 .week-lock-banner {

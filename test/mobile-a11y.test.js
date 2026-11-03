@@ -315,6 +315,56 @@ test('footer azbyka.ru stays inline in the sentence at 375px', async () => {
     assert.match(link.next, /^\./, `expected the period to follow the link, got ${JSON.stringify(link.next)}`);
 });
 
+test('#23 the sync pill does not cover day buttons at 375px', async () => {
+    await setViewport(375, 800);
+    const covered = await dayButtonsCoveredBySyncPill();
+    assert.equal(covered.status, 'nokey');
+    assert.equal(covered.text, '⚠ Bez synchronizácie – zadať kľúč');
+    assert.ok(covered.pill.width >= 24, `pill width ${covered.pill.width}`);
+    assert.ok(covered.pill.height >= 24, `pill height ${covered.pill.height}`);
+    assert.ok(covered.scrollWidth <= covered.clientWidth, `scrollWidth ${covered.scrollWidth}`);
+    for (const day of covered.days) {
+        assert.equal(day.covered, false, `${day.day} is covered by ${day.hit}`);
+    }
+});
+
+test('sync pill stays clear of day buttons at 320px and 1280px', async () => {
+    for (const width of [320, 1280]) {
+        await setViewport(width, 800);
+        const covered = await dayButtonsCoveredBySyncPill();
+        assert.ok(covered.scrollWidth <= covered.clientWidth, `${width} scrollWidth ${covered.scrollWidth}`);
+        assert.ok(covered.pill.height >= 24, `${width} pill height ${covered.pill.height}`);
+        for (const day of covered.days) {
+            assert.equal(day.covered, false, `${width} ${day.day} is covered by ${day.hit}`);
+        }
+    }
+});
+
+async function dayButtonsCoveredBySyncPill() {
+    const expression = `(() => {
+        const pill = document.getElementById('syncStatus');
+        const days = [...document.querySelectorAll('.day-btn')].map((btn) => {
+            btn.scrollIntoView({ block: 'center', inline: 'nearest' });
+            const r = btn.getBoundingClientRect();
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            const covered = !!hit && (hit === pill || pill.contains(hit) || hit.id === 'syncStatus');
+            return { day: btn.dataset.day, covered, hit: hit ? (hit.id || hit.className || hit.tagName) : null };
+        });
+        const pr = pill.getBoundingClientRect();
+        return {
+            status: pill.dataset.status,
+            text: pill.textContent.trim(),
+            pill: { width: pr.width, height: pr.height },
+            days,
+            scrollWidth: document.documentElement.scrollWidth,
+            clientWidth: document.documentElement.clientWidth
+        };
+    })()`;
+    const result = await send('Runtime.evaluate', { expression, returnByValue: true }, sessionId);
+    if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
+    return result.result.value;
+}
+
 test('1280px layout does not gain a horizontal scrollbar', async () => {
     await setViewport(1280);
     const m = await measure();
