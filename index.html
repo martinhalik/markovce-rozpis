@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Generátor rozpisu - Pravoslávni Markovce</title>
-    <link rel="stylesheet" href="style.css?v=2026.10.26">
+    <link rel="stylesheet" href="style.css?v=2026.11.03">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -113,7 +113,7 @@
                     </div>
                     <div class="recommendations" id="recommendations"></div>
                     <div class="rec-add-row" id="recAddRow" hidden>
-                        <input type="text" id="recAddInput" class="rec-add-input" placeholder="napr. 18:00 Akatist" maxlength="60">
+                        <input type="text" id="recAddInput" class="rec-add-input" placeholder="napr. 18:00 Akatist" maxlength="60" aria-label="Nová odporúčaná služba">
                         <button type="button" id="recAddBtn" class="rec-add-btn">➕ Pridať</button>
                     </div>
                 </section>
@@ -148,7 +148,7 @@
                             </div>
                         </div>
                         <div class="form-group">
-                            <label>Sviatok pre tento deň:</label>
+                            <label for="dayFeastName">Sviatok pre tento deň:</label>
                             <input type="text" id="dayFeastName" placeholder="napr. Prep. Xénia">
                         </div>
                         <div id="eventsList" class="events-list"></div>
@@ -292,7 +292,7 @@
         </p>
     </footer>
 
-    <script src="script.js?v=2026.10.26"></script>
+    <script src="script.js?v=2026.11.03"></script>
 </body>
 
 </html>

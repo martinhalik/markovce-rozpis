@@ -246,6 +246,8 @@ body {
 .form-group input[type="text"],
 .form-group input[type="file"] {
     width: 100%;
+    /* Intrinsic input width must not widen the form on a narrow screen. */
+    min-width: 0;
     padding: 12px 16px;
     background: var(--dark-bg);
     border: 2px solid var(--border-color);
@@ -604,6 +606,9 @@ label.week-label {
     display: flex;
     align-items: center;
     gap: 10px;
+    /* Default input min-width (~20ch) plus the handle and delete button
+       was wider than a 375px screen. Let the row shrink with the panel. */
+    min-width: 0;
     padding: 10px;
     background: var(--dark-bg);
     border-radius: 8px;
@@ -628,6 +633,8 @@ label.week-label {
 
 .event-item input {
     flex: 1;
+    min-width: 0;
+    width: auto;
     padding: 8px 12px;
     background: var(--card-bg);
     border: 1px solid var(--border-color);
@@ -1498,7 +1505,9 @@ body.week-locked .fasting-mode-label {
     }
 
     .main-content {
-        grid-template-columns: 1fr;
+        /* minmax(0, 1fr) so a long control inside the editor can't
+           stretch this column past the viewport. */
+        grid-template-columns: minmax(0, 1fr);
         gap: 20px;
     }
 
@@ -1513,12 +1522,14 @@ body.week-locked .fasting-mode-label {
         max-height: none;
         overflow-y: visible;
         padding: 22px;
+        min-width: 0;
     }
 
     .preview-panel {
         position: relative;
         top: 0;
         padding: 22px;
+        min-width: 0;
     }
 }
 
@@ -1586,18 +1597,40 @@ body.week-locked .fasting-mode-label {
         display: inline;
     }
 
-    /* Keep 2-column recommendations, truncate text so cards stay tidy. */
+    /* Keep 2 columns. Labels wrap (same as desktop) and the tracks may shrink,
+       so a long name stays inside the viewport instead of widening the page.
+       Font size is unchanged — the fit comes from the grid, not smaller type. */
     .recommendations {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .rec-btn {
         padding: 10px 10px;
         font-size: 0.82rem;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        white-space: normal;
         min-width: 0;
+    }
+
+    .rec-btn-label {
+        display: block;
+        min-width: 0;
+        overflow-wrap: anywhere;
+        white-space: normal;
+    }
+
+    /* WCAG 2.2 target size: "Dnes" is a text button with no padding. */
+    label.week-label {
+        align-items: center;
+    }
+
+    .today-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        min-width: 24px;
+        min-height: 24px;
+        padding: 2px 6px;
     }
 
     .template-buttons {
@@ -1707,6 +1740,20 @@ body.week-locked .fasting-mode-label {
 
 .site-footer a:hover {
     text-decoration: underline;
+}
+
+/* The footer credit is an inline link at ~13px. Give it a 24px box on
+   phones so it meets the same tap-target size as "Dnes". */
+@media (max-width: 768px) {
+    .site-footer a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        min-width: 24px;
+        min-height: 24px;
+        padding: 4px 2px;
+    }
 }
 
 .site-footer .app-version {
