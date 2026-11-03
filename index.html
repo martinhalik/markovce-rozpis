@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Generátor rozpisu - Pravoslávni Markovce</title>
-    <link rel="stylesheet" href="style.css?v=2026.10.26">
+    <link rel="stylesheet" href="style.css?v=2026.11.03">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -29,6 +29,9 @@
                 </nav>
             </div>
         </header>
+
+        <!-- In the page flow, under the header, so it never sits on top of the day buttons. -->
+        <button type="button" id="syncStatus" class="sync-status" data-status="offline" aria-live="polite" disabled>⚠ Bez spojenia</button>
 
         <div class="view-switcher" role="tablist" aria-label="Prepnúť pohľad">
             <button type="button" class="view-switcher-btn active" data-view="editor" role="tab" aria-selected="true" aria-controls="controlsPanel" id="viewTabEditor">
@@ -113,7 +116,7 @@
                     </div>
                     <div class="recommendations" id="recommendations"></div>
                     <div class="rec-add-row" id="recAddRow" hidden>
-                        <input type="text" id="recAddInput" class="rec-add-input" placeholder="napr. 18:00 Akatist" maxlength="60">
+                        <input type="text" id="recAddInput" class="rec-add-input" placeholder="napr. 18:00 Akatist" maxlength="60" aria-label="Nová odporúčaná služba">
                         <button type="button" id="recAddBtn" class="rec-add-btn">➕ Pridať</button>
                     </div>
                 </section>
@@ -148,7 +151,7 @@
                             </div>
                         </div>
                         <div class="form-group">
-                            <label>Sviatok pre tento deň:</label>
+                            <label for="dayFeastName">Sviatok pre tento deň:</label>
                             <input type="text" id="dayFeastName" placeholder="napr. Prep. Xénia">
                         </div>
                         <div id="eventsList" class="events-list"></div>
@@ -281,9 +284,6 @@
         <span class="saved-toast-text">Uložené</span>
     </div>
 
-    <!-- Sync status indicator -->
-    <div id="syncStatus" class="sync-status" data-status="offline" role="status" aria-live="polite">⚠ Bez spojenia</div>
-
     <footer class="site-footer">
         <p>
             Ikony svätých a sviatkov: <a href="https://azbyka.ru/days/" target="_blank" rel="noopener noreferrer">azbyka.ru</a>.
@@ -292,7 +292,7 @@
         </p>
     </footer>
 
-    <script src="script.js?v=2026.10.26"></script>
+    <script src="script.js?v=2026.11.03"></script>
 </body>
 
 </html>

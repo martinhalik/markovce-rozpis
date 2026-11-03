@@ -246,6 +246,8 @@ body {
 .form-group input[type="text"],
 .form-group input[type="file"] {
     width: 100%;
+    /* Intrinsic input width must not widen the form on a narrow screen. */
+    min-width: 0;
     padding: 12px 16px;
     background: var(--dark-bg);
     border: 2px solid var(--border-color);
@@ -283,11 +285,20 @@ label.week-label {
     font-size: 0.85rem;
     font-weight: 600;
     cursor: pointer;
-    padding: 0;
     text-decoration: underline;
     text-underline-offset: 2px;
     transition: color 0.15s ease;
-    margin-left: auto;
+    /* Standalone control: 44×44 hit area. Padding grows the box; the
+       negative margin gives that padding back so the word does not move.
+       Left margin stays auto so "Dnes" remains at the end of the label. */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 10px;
+    margin: -10px -10px -10px auto;
 }
 
 .today-link:hover {
@@ -604,6 +615,9 @@ label.week-label {
     display: flex;
     align-items: center;
     gap: 10px;
+    /* Default input min-width (~20ch) plus the handle and delete button
+       was wider than a 375px screen. Let the row shrink with the panel. */
+    min-width: 0;
     padding: 10px;
     background: var(--dark-bg);
     border-radius: 8px;
@@ -628,6 +642,8 @@ label.week-label {
 
 .event-item input {
     flex: 1;
+    min-width: 0;
+    width: auto;
     padding: 8px 12px;
     background: var(--card-bg);
     border: 1px solid var(--border-color);
@@ -1019,27 +1035,61 @@ label.week-label {
 }
 
 /* ── Sync status indicator ──────────────────────────────────────────────── */
+/* In normal flow (not fixed), right-aligned under the header. A fixed pill
+   covered the day buttons on a 375px screen and stole their taps.
+   The transparent vertical border is the extra hit area (44px); a negative
+   margin gives it back so the orange pill does not move or grow. */
 .sync-status {
-    position: fixed;
-    bottom: 68px;
-    right: 24px;
+    appearance: none;
+    position: static;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-height: 44px;
+    min-width: 44px;
+    margin: -10px 0 6px auto;
     padding: 5px 12px;
+    border-width: 10px 0;
+    border-style: solid;
+    border-color: transparent;
     border-radius: 999px;
+    background-clip: padding-box;
+    font-family: inherit;
     font-size: 0.75rem;
     font-weight: 600;
+    line-height: 1.3;
+    text-align: center;
     color: white;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 1900;
+    /* Shadow follows the opaque orange, not the transparent hit-area border. */
+    box-shadow: none;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
     opacity: 0.88;
     pointer-events: none;
+    cursor: default;
     transition: background 0.3s ease, opacity 0.3s ease;
 }
 
-.sync-status[data-status="synced"]    { background: #2ecc71; }
-.sync-status[data-status="uploading"] { background: #3498db; }
-.sync-status[data-status="offline"]   { background: #7f8c8d; opacity: 0.65; }
-.sync-status[data-status="nokey"]     { background: #e67e22; opacity: 0.9; pointer-events: auto; cursor: pointer; }
-.sync-status[data-status="hidden"]    { opacity: 0; }
+.sync-status:disabled {
+    color: white;
+    opacity: 0.88;
+}
+
+.sync-status:focus-visible {
+    outline: 2px solid var(--primary-blue);
+    /* Pull the ring onto the visible pill; the outer 10px is transparent hit area. */
+    outline-offset: -8px;
+}
+
+.sync-status[data-status="synced"]    { background-color: #2ecc71; }
+.sync-status[data-status="uploading"] { background-color: #3498db; }
+.sync-status[data-status="offline"]   { background-color: #7f8c8d; opacity: 0.65; }
+/* Navy (#1a1a2e) on this orange is 5.99:1. White on the same orange is 2.85:1.
+   background-color, not the background shorthand, so the transparent hit border stays clear. */
+.sync-status[data-status="nokey"]     { background-color: #e67e22; color: var(--dark-bg); opacity: 1; pointer-events: auto; cursor: pointer; }
+.sync-status[data-status="hidden"]    { display: none; }
 
 /* ── Past-week lock banner ──────────────────────────────────────────────── */
 .week-lock-banner {
@@ -1498,7 +1548,9 @@ body.week-locked .fasting-mode-label {
     }
 
     .main-content {
-        grid-template-columns: 1fr;
+        /* minmax(0, 1fr) so a long control inside the editor can't
+           stretch this column past the viewport. */
+        grid-template-columns: minmax(0, 1fr);
         gap: 20px;
     }
 
@@ -1513,12 +1565,14 @@ body.week-locked .fasting-mode-label {
         max-height: none;
         overflow-y: visible;
         padding: 22px;
+        min-width: 0;
     }
 
     .preview-panel {
         position: relative;
         top: 0;
         padding: 22px;
+        min-width: 0;
     }
 }
 
@@ -1586,18 +1640,25 @@ body.week-locked .fasting-mode-label {
         display: inline;
     }
 
-    /* Keep 2-column recommendations, truncate text so cards stay tidy. */
+    /* Keep 2 columns. Labels wrap (same as desktop) and the tracks may shrink,
+       so a long name stays inside the viewport instead of widening the page.
+       Font size is unchanged — the fit comes from the grid, not smaller type. */
     .recommendations {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .rec-btn {
         padding: 10px 10px;
         font-size: 0.82rem;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        white-space: normal;
         min-width: 0;
+    }
+
+    .rec-btn-label {
+        display: block;
+        min-width: 0;
+        overflow-wrap: anywhere;
+        white-space: normal;
     }
 
     .template-buttons {
