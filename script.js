@@ -1411,6 +1411,7 @@ const sync = (() => {
                 hidden:    '',
             };
             el.textContent = labels[next] !== undefined ? labels[next] : '';
+            el.disabled = next !== 'nokey';
             el.title = next === 'nokey'
                 ? 'Toto zariadenie nemá synchronizačný kľúč. Kliknutím ho zadáte.'
                 : '';

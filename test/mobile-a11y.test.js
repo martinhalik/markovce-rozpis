@@ -320,8 +320,9 @@ test('#23 the sync pill does not cover day buttons at 375px', async () => {
     const covered = await dayButtonsCoveredBySyncPill();
     assert.equal(covered.status, 'nokey');
     assert.equal(covered.text, '⚠ Bez synchronizácie – zadať kľúč');
-    assert.ok(covered.pill.width >= 24, `pill width ${covered.pill.width}`);
-    assert.ok(covered.pill.height >= 24, `pill height ${covered.pill.height}`);
+    assert.equal(covered.tag, 'BUTTON');
+    assert.ok(covered.pill.width >= 44, `pill width ${covered.pill.width}`);
+    assert.ok(covered.pill.height >= 44, `pill height ${covered.pill.height}`);
     assert.ok(covered.scrollWidth <= covered.clientWidth, `scrollWidth ${covered.scrollWidth}`);
     for (const day of covered.days) {
         assert.equal(day.covered, false, `${day.day} is covered by ${day.hit}`);
@@ -333,7 +334,7 @@ test('sync pill stays clear of day buttons at 320px and 1280px', async () => {
         await setViewport(width, 800);
         const covered = await dayButtonsCoveredBySyncPill();
         assert.ok(covered.scrollWidth <= covered.clientWidth, `${width} scrollWidth ${covered.scrollWidth}`);
-        assert.ok(covered.pill.height >= 24, `${width} pill height ${covered.pill.height}`);
+        assert.ok(covered.pill.height >= 44, `${width} pill height ${covered.pill.height}`);
         for (const day of covered.days) {
             assert.equal(day.covered, false, `${width} ${day.day} is covered by ${day.hit}`);
         }
@@ -354,6 +355,7 @@ async function dayButtonsCoveredBySyncPill() {
         return {
             status: pill.dataset.status,
             text: pill.textContent.trim(),
+            tag: pill.tagName,
             pill: { width: pr.width, height: pr.height },
             days,
             scrollWidth: document.documentElement.scrollWidth,
@@ -364,6 +366,59 @@ async function dayButtonsCoveredBySyncPill() {
     if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
     return result.result.value;
 }
+
+test('#23 sync pill is a button activated by Enter and Space', async () => {
+    await setViewport(375, 800);
+    const ready = await send('Runtime.evaluate', {
+        expression: `(() => {
+            const pill = document.getElementById('syncStatus');
+            window.__prompts = [];
+            window.prompt = (msg) => { window.__prompts.push(msg); return null; };
+            pill.focus();
+            const cs = getComputedStyle(pill);
+            const r = pill.getBoundingClientRect();
+            return {
+                tag: pill.tagName,
+                type: pill.getAttribute('type'),
+                disabled: pill.disabled,
+                active: document.activeElement === pill,
+                width: r.width,
+                height: r.height,
+                outlineWidth: cs.outlineWidth,
+                outlineStyle: cs.outlineStyle,
+                color: cs.color,
+                background: cs.backgroundColor
+            };
+        })()`,
+        returnByValue: true
+    }, sessionId);
+    const info = ready.result.value;
+    assert.equal(info.tag, 'BUTTON');
+    assert.equal(info.type, 'button');
+    assert.equal(info.disabled, false);
+    assert.equal(info.active, true);
+    assert.ok(info.width >= 44 && info.height >= 44, `${info.width}x${info.height}`);
+    assert.equal(info.outlineStyle, 'solid');
+    assert.ok(parseFloat(info.outlineWidth) >= 2, info.outlineWidth);
+    assert.equal(info.color, 'rgb(26, 26, 46)');
+    assert.equal(info.background, 'rgb(230, 126, 34)');
+
+    async function press(key, code, vk, text) {
+        const base = { key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, text };
+        await send('Input.dispatchKeyEvent', { type: 'keyDown', ...base }, sessionId);
+        await send('Input.dispatchKeyEvent', { type: 'keyUp', ...base }, sessionId);
+    }
+    await press('Enter', 'Enter', 13, '\r');
+    await press(' ', 'Space', 32, ' ');
+    const prompts = await send('Runtime.evaluate', {
+        expression: 'window.__prompts.slice()',
+        returnByValue: true
+    }, sessionId);
+    assert.deepEqual(prompts.result.value, [
+        'Zadajte synchronizačný kľúč farnosti:',
+        'Zadajte synchronizačný kľúč farnosti:'
+    ]);
+});
 
 test('1280px layout does not gain a horizontal scrollbar', async () => {
     await setViewport(1280);
