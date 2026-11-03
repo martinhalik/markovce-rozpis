@@ -261,15 +261,58 @@ test('#20 a long unbreakable recommendation still fits at 375px', async () => {
     assert.ok(m.labelScroll <= m.labelClient + 1);
 });
 
-test('#19 Dnes and the footer link are at least 24px at 375px', async () => {
+test('#19 Dnes is a 44px hit target and keeps its focus ring at 375px', async () => {
     await setViewport(375);
-    const m = await measure();
-    for (const [name, box] of [['Dnes', m.dnes], ['azbyka.ru', m.footerLink]]) {
-        assert.ok(box, `${name} missing`);
-        assert.equal(box.text, name === 'Dnes' ? 'Dnes' : 'azbyka.ru');
-        assert.ok(box.width >= 24, `${name} width ${box.width}`);
-        assert.ok(box.height >= 24, `${name} height ${box.height}`);
-    }
+    const expression = `(() => {
+        const el = document.querySelector('.today-link');
+        el.focus();
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        return {
+            text: el.textContent.trim(),
+            width: r.width,
+            height: r.height,
+            display: cs.display,
+            outlineWidth: cs.outlineWidth,
+            outlineStyle: cs.outlineStyle,
+            outlineColor: cs.outlineColor
+        };
+    })()`;
+    const result = await send('Runtime.evaluate', { expression, returnByValue: true }, sessionId);
+    const box = result.result.value;
+    assert.equal(box.text, 'Dnes');
+    // A flex item blockifies inline-flex to flex; the hit box is what matters.
+    assert.ok(box.width >= 44, `Dnes width ${box.width}`);
+    assert.ok(box.height >= 44, `Dnes height ${box.height}`);
+    assert.notEqual(box.outlineStyle, 'none');
+    assert.ok(parseFloat(box.outlineWidth) >= 2, `outline ${box.outlineWidth}`);
+});
+
+test('footer azbyka.ru stays inline in the sentence at 375px', async () => {
+    await setViewport(375);
+    const expression = `(() => {
+        const a = document.querySelector('.site-footer a');
+        const cs = getComputedStyle(a);
+        const next = a.nextSibling && a.nextSibling.textContent;
+        return {
+            text: a.textContent.trim(),
+            display: cs.display,
+            paddingTop: cs.paddingTop,
+            paddingRight: cs.paddingRight,
+            paddingBottom: cs.paddingBottom,
+            paddingLeft: cs.paddingLeft,
+            next: next
+        };
+    })()`;
+    const result = await send('Runtime.evaluate', { expression, returnByValue: true }, sessionId);
+    const link = result.result.value;
+    assert.equal(link.text, 'azbyka.ru');
+    assert.equal(link.display, 'inline');
+    assert.equal(link.paddingTop, '0px');
+    assert.equal(link.paddingRight, '0px');
+    assert.equal(link.paddingBottom, '0px');
+    assert.equal(link.paddingLeft, '0px');
+    assert.match(link.next, /^\./, `expected the period to follow the link, got ${JSON.stringify(link.next)}`);
 });
 
 test('1280px layout does not gain a horizontal scrollbar', async () => {

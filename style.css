@@ -285,11 +285,20 @@ label.week-label {
     font-size: 0.85rem;
     font-weight: 600;
     cursor: pointer;
-    padding: 0;
     text-decoration: underline;
     text-underline-offset: 2px;
     transition: color 0.15s ease;
-    margin-left: auto;
+    /* Standalone control: 44×44 hit area. Padding grows the box; the
+       negative margin gives that padding back so the word does not move.
+       Left margin stays auto so "Dnes" remains at the end of the label. */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 10px;
+    margin: -10px -10px -10px auto;
 }
 
 .today-link:hover {
@@ -1618,21 +1627,6 @@ body.week-locked .fasting-mode-label {
         white-space: normal;
     }
 
-    /* WCAG 2.2 target size: "Dnes" is a text button with no padding. */
-    label.week-label {
-        align-items: center;
-    }
-
-    .today-link {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        box-sizing: border-box;
-        min-width: 24px;
-        min-height: 24px;
-        padding: 2px 6px;
-    }
-
     .template-buttons {
         grid-template-columns: 1fr;
     }
@@ -1740,20 +1734,6 @@ body.week-locked .fasting-mode-label {
 
 .site-footer a:hover {
     text-decoration: underline;
-}
-
-/* The footer credit is an inline link at ~13px. Give it a 24px box on
-   phones so it meets the same tap-target size as "Dnes". */
-@media (max-width: 768px) {
-    .site-footer a {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        box-sizing: border-box;
-        min-width: 24px;
-        min-height: 24px;
-        padding: 4px 2px;
-    }
 }
 
 .site-footer .app-version {
